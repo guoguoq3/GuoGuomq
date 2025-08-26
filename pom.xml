@@ -9,11 +9,11 @@
     <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <modules>
-        <module>GuoGuomq-common</module>
         <module>GuoGuomq-broker</module>
         <module>GuoGuomq-producer</module>
         <module>GuoGuomq-consumer</module>
         <module>GuoGuomq-test</module>
+        <module>GuoGuomq-common</module>
     </modules>
     <parent>
         <groupId>org.springframework.boot</groupId>
@@ -44,10 +44,10 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>org.springframework.boot</groupId>-->
+<!--            <artifactId>spring-boot-starter-web</artifactId>-->
+<!--        </dependency>-->
         <!-- 测试环境 -->
 <!--        &lt;!&ndash; 日志 &ndash;&gt;-->
 <!--        <dependency>-->

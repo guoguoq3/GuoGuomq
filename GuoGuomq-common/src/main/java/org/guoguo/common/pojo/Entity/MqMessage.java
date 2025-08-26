@@ -1,4 +1,4 @@
-package org.guoguo.common;
+package org.guoguo.common.pojo.Entity;
 
 import lombok.Data;
 

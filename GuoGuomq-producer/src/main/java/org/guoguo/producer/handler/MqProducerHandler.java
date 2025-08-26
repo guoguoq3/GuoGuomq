@@ -4,8 +4,8 @@ import com.alibaba.fastjson.JSON;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import org.guoguo.common.RpcMessageDTO;
-import org.guoguo.producer.service.Impl.MqProducer;
+import org.guoguo.common.pojo.DTO.RpcMessageDTO;
+import org.guoguo.producer.service.impl.MqProducer;
 /*
 用于处理从消息代理（broker）返回的响应消息 当通道接收到数据时，Netty会自动调用channelRead0方法
 Broker发送响应消息

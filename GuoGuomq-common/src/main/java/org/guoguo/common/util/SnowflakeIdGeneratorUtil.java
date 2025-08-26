@@ -1,4 +1,4 @@
-package org.guoguo.producer.util;
+package org.guoguo.common.util;
 
 import org.springframework.stereotype.Component;
 

@@ -2,24 +2,34 @@ package org.guoguo.producer;
 
 
 import lombok.RequiredArgsConstructor;
-import org.guoguo.common.MqMessage;
+import lombok.extern.slf4j.Slf4j;
+import org.guoguo.common.pojo.Entity.MqMessage;
 import org.guoguo.producer.pojo.Result;
-import org.guoguo.producer.service.Impl.MqProducer;
+import org.guoguo.producer.service.impl.MqProducer;
 
-import java.util.Arrays;
 @RequiredArgsConstructor
+@Slf4j
 public class ProducerMain {
     private final MqProducer producer;
     public static void main(String[] args) {
-        MqProducer producer = new MqProducer();
-        producer.start();
+//        MqProducer producer = new MqProducer();
+//        producer.start();
+//
+//        MqMessage message = new MqMessage();
+//        message.setTopic("TEST_TOPIC");
+//        message.setTags(Arrays.asList("TAG1"));
+//        message.setPayload("Hello, MQ!");
+//
+//        Result<String> result = producer.send(message);
+//        System.out.println("发送结果：" + result.getMessage() + "，消息ID：" + result.getMessageId());
+        // 发送消息
 
+    }
+    public void sendTestMessage() {
         MqMessage message = new MqMessage();
         message.setTopic("TEST_TOPIC");
-        message.setTags(Arrays.asList("TAG1"));
-        message.setPayload("Hello, MQ!");
-
+        message.setPayload("Hello, Spring + GuoGuomq!");
         Result<String> result = producer.send(message);
-        System.out.println("发送结果：" + result.getMessage() + "，消息ID：" + result.getMessageId());
+        log.info("发送结果：{}", result);
     }
 }
