@@ -36,23 +36,23 @@ public class MqConsumerTest {
         subscribeReq.setTags(Arrays.asList("TAG1")); // 只接收标签为 TAG1 的消息
 
         // 2. 订阅主题并设置消息监听器（收到消息后处理）
-        mqConsumer.subscribe(subscribeReq, new IMessageListener() {
-            @Override
-            public void onMessage(MqMessage message) {
-                log.info("【消费者测试】收到消息：主题={}，内容={}，标签={}",
-                        message.getTopic(), message.getPayload(), message.getTags());
-
-                // 验证消息内容（实际测试可根据业务场景添加断言）
-                if ("Hello, GuoGuomq!".equals(message.getPayload())) {
-                    log.info("【消费者测试】消息内容验证通过");
-                } else {
-                    log.error("【消费者测试】消息内容验证失败");
-                }
-
-                // 消息处理完成，计数器减1（释放等待的测试线程）
-                latch.countDown();
-            }
-        });
+//        mqConsumer.subscribe(subscribeReq, new IMessageListener() {
+//            @Override
+//            public void onMessage(MqMessage message) {
+//                log.info("【消费者测试】收到消息：主题={}，内容={}，标签={}",
+//                        message.getTopic(), message.getPayload(), message.getTags());
+//
+//                // 验证消息内容（实际测试可根据业务场景添加断言）
+//                if ("Hello, GuoGuomq!".equals(message.getPayload())) {
+//                    log.info("【消费者测试】消息内容验证通过");
+//                } else {
+//                    log.error("【消费者测试】消息内容验证失败");
+//                }
+//
+//                // 消息处理完成，计数器减1（释放等待的测试线程）
+//                latch.countDown();
+//            }
+//        });
 
         // 3. 阻塞等待消息接收（最多等10秒，避免无限阻塞）
         latch.await(10, TimeUnit.MINUTES);

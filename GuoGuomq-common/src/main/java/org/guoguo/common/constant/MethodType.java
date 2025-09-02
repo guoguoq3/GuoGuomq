@@ -9,4 +9,6 @@ public class MethodType {
     public static final String B_PUSH_MSG = "B_PUSH_MSG";
     /** Broker向消费者新增订阅响应类型 */
     public static final String B_SUBSCRIBE_RESPONSE = "B_SUBSCRIBE_RESPONSE";
+    // 消费者发送消费确认
+    public static final String C_ACK_MSG = "C_ACK_MSG";
 }

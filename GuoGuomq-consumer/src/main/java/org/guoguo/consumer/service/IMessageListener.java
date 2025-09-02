@@ -8,7 +8,8 @@ import org.guoguo.common.pojo.Entity.MqMessage;
 public interface IMessageListener {
     /**
      * 处理消息
-     * @param message 接收到的消息
+     * @param message 收到的消息
+     * @return 处理结果（true=成功，false=失败）
      */
-    void onMessage(MqMessage message);
+    boolean onMessage(MqMessage message);
 }

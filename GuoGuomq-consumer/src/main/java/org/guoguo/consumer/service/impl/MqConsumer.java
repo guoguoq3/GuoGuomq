@@ -3,12 +3,15 @@ package org.guoguo.consumer.service.impl;
 
 import com.alibaba.fastjson.JSON;
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.DelimiterBasedFrameDecoder;
 import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
 import jakarta.annotation.PostConstruct;
@@ -35,6 +38,7 @@ public class MqConsumer implements IMqConsumer {
     private final MqConfigProperties config;
     private Channel channel;
     private EventLoopGroup group;
+
     private final Map<String, IMessageListener> topicListenerMap = new HashMap<>();
     private final SnowflakeIdGeneratorUtil snowflakeIdGeneratorUtil = new SnowflakeIdGeneratorUtil();
 
@@ -56,7 +60,11 @@ public class MqConsumer implements IMqConsumer {
                     .handler(new ChannelInitializer<Channel>() {
                         @Override
                         protected void initChannel(Channel ch) {
+                            // 1. 添加分隔符处理器：以换行符 \n 作为消息结束标志
+                            // 最大帧长度 1024*1024（1MB），超过则抛异常
+                            ByteBuf delimiter = Unpooled.copiedBuffer("\n".getBytes());
                             ch.pipeline()
+                                    .addLast(new DelimiterBasedFrameDecoder(1024 * 1024, delimiter))
                                     .addLast(new StringDecoder())
                                     .addLast(new StringEncoder())
                                     .addLast(new MqConsumerHandler(MqConsumer.this));
@@ -86,24 +94,29 @@ public class MqConsumer implements IMqConsumer {
         rpcDto.setTraceId(String.valueOf(snowflakeIdGeneratorUtil.nextId()));
         rpcDto.setMethodType(MethodType.C_SUBSCRIBE);
         rpcDto.setJson(JSON.toJSONString(subscribeReqDto));
-        channel.writeAndFlush(JSON.toJSONString(rpcDto));
+        channel.writeAndFlush(JSON.toJSONString(rpcDto) + "\n");
         log.info("消费者订阅主题：{}", topic);
     }
 
-    // 关闭资源
-    @PreDestroy
-    @Override
-    public void close() {
-        if (group != null) group.shutdownGracefully();
-        log.info("消费者已关闭");
-    }
-
-    public void handlerMessage(String topic, MqMessage message) {
+    public boolean handlerMessage(String topic, MqMessage message) {
         IMessageListener listener = topicListenerMap.get(topic);
-        if (listener != null) {
-            listener.onMessage(message);
-        } else {
-            log.error("无主题 {} 的监听器", topic);
+        if (listener == null) {
+            log.error("GuoGuomq 消费者无主题{}的监听器，消息处理失败", topic);
+            return false;
+        }
+        try {
+            // 调用用户自定义的监听器逻辑，返回处理结果
+            return listener.onMessage(message);
+        } catch (Exception e) {
+            log.error("GuoGuomq 消费者监听器处理消息异常：主题={}", topic, e);
+            return false;
+        }
+    }
+    @PreDestroy
+    public void close() {
+        if (group != null) {
+            group.shutdownGracefully();
+            log.info("GuoGuomq 消费者关闭，释放资源");
         }
     }
 }

@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
  * MQ 统一配置类，绑定 application.properties 中的配置
  */
 @Data
-@Component
+//@Component
 @ConfigurationProperties(prefix = "guoguomq") // 配置前缀
 public class MqConfigProperties {
     /** Broker 地址（默认：127.0.0.1） */
@@ -20,4 +20,10 @@ public class MqConfigProperties {
     private int producerTimeout = 4000;
     /** 消费者连接超时时间（毫秒，默认：5000） */
     private int consumerTimeout = 5000;
+
+    //新增持久化配置
+    /** 消息持久化文件路径（默认：项目根目录下的 guoguomq-data 文件夹） */
+    private String persistPath = System.getProperty("user.dir") + "/GuoGuomq-data";
+    /** 单个持久化文件最大大小（默认：10MB，超过则创建新文件） */
+    private long maxFileSize = 1024 * 1024 * 10; // 10MB
 }

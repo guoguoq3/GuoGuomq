@@ -2,15 +2,19 @@
 package org.guoguo.broker.core;
 
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.DelimiterBasedFrameDecoder;
 import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.guoguo.broker.handler.MqBrokerHandler;
+import org.guoguo.broker.util.FilePersistUtil;
 import org.guoguo.common.config.MqConfigProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -21,16 +25,24 @@ public class MqBroker {
     private final MqConfigProperties config;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
+    private final MqBrokerHandler mqBrokerHandler;
+
+    private final FilePersistUtil filePersistUtil;
+
 
     // 构造器注入配置
     @Autowired
-    public MqBroker(MqConfigProperties config) {
+    public MqBroker(MqConfigProperties config,MqBrokerHandler mqBrokerHandler,FilePersistUtil filePersistUtil) {
         this.config = config;
+        this.mqBrokerHandler = mqBrokerHandler;
+        this.filePersistUtil = filePersistUtil;
     }
 
     // 启动时自动执行（初始化 Netty 服务）
     @PostConstruct
     public void start() throws InterruptedException {
+        System.out.println(222222);
+        //需要时创建
         bossGroup = new NioEventLoopGroup();
         workerGroup = new NioEventLoopGroup();
 
@@ -39,12 +51,17 @@ public class MqBroker {
             bootstrap.group(bossGroup, workerGroup)
                     .channel(NioServerSocketChannel.class)
                     .childHandler(new ChannelInitializer<Channel>() {
+
                         @Override
                         protected void initChannel(Channel channel) {
+                            // 1. 添加分隔符处理器：以换行符 \n 作为消息结束标志
+                            // 最大帧长度 1024*1024（1MB），超过则抛异常
+                            ByteBuf delimiter = Unpooled.copiedBuffer("\n".getBytes());
                             channel.pipeline()
+                                    .addLast(new DelimiterBasedFrameDecoder(1024 * 1024, delimiter))
                                     .addLast(new StringDecoder())
                                     .addLast(new StringEncoder())
-                                    .addLast(new MqBrokerHandler());
+                                    .addLast(mqBrokerHandler);
                         }
                     })
                     .option(ChannelOption.SO_BACKLOG, 128)
