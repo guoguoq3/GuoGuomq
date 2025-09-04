@@ -4,6 +4,7 @@ package org.guoguo.producer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.guoguo.common.pojo.Entity.MqMessage;
+import org.guoguo.common.pojo.Entity.MqMessageEnduring;
 import org.guoguo.producer.pojo.Result;
 import org.guoguo.producer.service.impl.MqProducer;
 
@@ -26,7 +27,7 @@ public class ProducerMain {
 
     }
     public void sendTestMessage() {
-        MqMessage message = new MqMessage();
+        MqMessageEnduring message = new MqMessageEnduring();
         message.setTopic("TEST_TOPIC");
         message.setPayload("Hello, Spring + GuoGuomq!");
         Result<String> result = producer.send(message);

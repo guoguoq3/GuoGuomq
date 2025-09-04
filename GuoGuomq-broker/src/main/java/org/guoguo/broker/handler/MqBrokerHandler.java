@@ -11,6 +11,7 @@ import org.guoguo.common.pojo.Entity.MqMessage;
 import org.guoguo.common.pojo.DTO.RpcMessageDTO;
 import org.guoguo.common.constant.MethodType;
 import org.guoguo.common.pojo.DTO.SubscribeReqDTO;
+import org.guoguo.common.pojo.Entity.MqMessageEnduring;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -37,11 +38,11 @@ public class MqBrokerHandler extends SimpleChannelInboundHandler<String> {
         // 根据方法类型处理不同请求
         switch (rpcDto.getMethodType()) {
             case MethodType.P_SEND_MSG:
-                MqMessage mqMessage=JSON.parseObject(rpcDto.getJson(), MqMessage.class);
+                MqMessageEnduring mqMessage=JSON.parseObject(rpcDto.getJson(), MqMessageEnduring.class);
                 log.info("GuoGuomq================>   Broker收到消息：" + mqMessage);
-                //处理生产者发送消息 并告知生产者消息已收到
-                brokerManager.handlerMessage(mqMessage);
-                sendSuccessResponse(MethodType.B_PUSH_MSG, ctx,rpcDto.getTraceId());
+                //处理生产者发送消息 并返回确认告知生产者消息已收到,
+                brokerManager.handlerMessage(mqMessage,rpcDto.getTraceId());
+                sendSuccessResponse(MethodType.P_CONFIRM_MSG, ctx,rpcDto.getTraceId());
                 break;
             case MethodType.C_SUBSCRIBE:
                 SubscribeReqDTO subscribeReqDTO = JSON.parseObject(rpcDto.getJson(), SubscribeReqDTO.class);

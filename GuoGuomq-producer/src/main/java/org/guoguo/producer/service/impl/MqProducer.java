@@ -21,15 +21,18 @@ import org.guoguo.common.pojo.Entity.MqMessage;
 import org.guoguo.common.config.MqConfigProperties;
 import org.guoguo.common.constant.MethodType;
 import org.guoguo.common.pojo.DTO.RpcMessageDTO;
+import org.guoguo.common.pojo.Entity.MqMessageEnduring;
 import org.guoguo.producer.constant.ResultCodeEnum;
 import org.guoguo.producer.handler.MqProducerHandler;
 import org.guoguo.producer.pojo.Result;
-import org.guoguo.producer.service.IMqProducer;
+
 import org.guoguo.common.util.SnowflakeIdGeneratorUtil;
+import org.guoguo.producer.service.IMqProducer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -40,8 +43,9 @@ public class MqProducer implements IMqProducer {
     private Channel channel;
     private EventLoopGroup group;
     private String traceId;
+    //methodType消息确认字段避免空指针设一个默认值
+    private String methodType="sb";
 
-    private String response;
     private final SnowflakeIdGeneratorUtil snowflakeIdGeneratorUtil = new SnowflakeIdGeneratorUtil();
 
     // 注入配置
@@ -81,25 +85,39 @@ public class MqProducer implements IMqProducer {
         }
     }
 
+    // 新增成员变量和setResponse方法修改
+    private final ConcurrentHashMap<String, CountDownLatch> traceIdLatchMap = new ConcurrentHashMap<>();
+
     @Override
-    public Result<String> send(MqMessage message) {
+    public Result<String> send(MqMessageEnduring message) {
         try {
-            traceId = String.valueOf(snowflakeIdGeneratorUtil.nextId());
+            String currentTraceId = String.valueOf(snowflakeIdGeneratorUtil.nextId());
             RpcMessageDTO rpcMessageDTO = new RpcMessageDTO();
-            rpcMessageDTO.setTraceId(traceId);
+            rpcMessageDTO.setTraceId(currentTraceId);
             rpcMessageDTO.setRequest(true);
             rpcMessageDTO.setMethodType(MethodType.P_SEND_MSG);
             rpcMessageDTO.setJson(JSON.toJSONString(message));
 
-            channel.writeAndFlush(JSON.toJSONString(rpcMessageDTO) + "\n");
-
-            // 使用配置中的超时时间
+            // 为每个消息创建独立的等待器
             CountDownLatch latch = new CountDownLatch(1);
-            latch.await(config.getProducerTimeout(), TimeUnit.MILLISECONDS);
+            // 使用ConcurrentHashMap存储traceId与latch的映射
+            traceIdLatchMap.put(currentTraceId, latch);
+            channel.writeAndFlush(JSON.toJSONString(rpcMessageDTO) + "\n");
+            // 等待确认或超时
+            boolean await = latch.await(config.getProducerTimeout(), TimeUnit.MILLISECONDS);
+            // 清理映射关系
+            traceIdLatchMap.remove(currentTraceId);
 
-            return Result.ok("消息发送成功", traceId);
+
+            if(await){
+                //解除等待返回true，超时则返回false
+                return Result.ok("消息发送成功", currentTraceId);
+            }else {
+                //超时返回失败
+                return Result.build("消息发送超时", ResultCodeEnum.FAILED, currentTraceId);
+            }
         } catch (Exception e) {
-            return Result.build("消息发送失败", ResultCodeEnum.FAILED, traceId);
+            return Result.build("消息发送失败", ResultCodeEnum.FAILED,null);
         }
     }
 
@@ -110,9 +128,14 @@ public class MqProducer implements IMqProducer {
         log.info("生产者已关闭");
     }
 
-    public void setResponse(String traceId, String response) {
-        if (this.traceId.equals(traceId)) {
-            this.response = response;
+    public void setResponse(String traceId, String methodType) {
+        // 根据traceId获取对应的latch并释放
+        CountDownLatch latch = traceIdLatchMap.get(traceId);
+        if (latch != null) {
+            // 验证确认类型
+            if (MethodType.P_CONFIRM_MSG.equals(methodType)) {
+                latch.countDown();
+            }
         }
     }
 }
