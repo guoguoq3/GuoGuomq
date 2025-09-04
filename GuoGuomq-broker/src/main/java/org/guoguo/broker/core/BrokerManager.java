@@ -110,8 +110,8 @@ public class BrokerManager {
     /**
      * 处理生产者发送的消息：存储消息并推送给订阅者
      */
-    public void handlerMessage(MqMessage mqMessage){
-        String messageId= String.valueOf(snowflakeIdGeneratorUtil.nextId());
+    public void handlerMessage(MqMessage mqMessage,String messageId){
+        //String messageId= String.valueOf(snowflakeIdGeneratorUtil.nextId());
         messageMap.put(messageId, mqMessage);
         //做持久化
         log.info("GuoGuomq=====================>存储消息：{}", messageId);

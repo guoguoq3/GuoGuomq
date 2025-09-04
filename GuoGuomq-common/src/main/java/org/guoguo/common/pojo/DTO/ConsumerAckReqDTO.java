@@ -14,4 +14,6 @@ public class ConsumerAckReqDTO {
     private String consumerId;
     /** 确认状态（SUCCESS=处理成功，FAIL=处理失败，后续可扩展重试） */
     private String ackStatus = "SUCCESS";
+    //消费者分组
+    private String consumerGroup;
 }

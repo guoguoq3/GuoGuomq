@@ -40,7 +40,7 @@ public class MqBrokerHandler extends SimpleChannelInboundHandler<String> {
                 MqMessage mqMessage=JSON.parseObject(rpcDto.getJson(), MqMessage.class);
                 log.info("GuoGuomq================>   Broker收到消息：" + mqMessage);
                 //处理生产者发送消息 并告知生产者消息已收到
-                brokerManager.handlerMessage(mqMessage);
+                brokerManager.handlerMessage(mqMessage,rpcDto.getTraceId());
                 sendSuccessResponse(MethodType.B_PUSH_MSG, ctx,rpcDto.getTraceId());
                 break;
             case MethodType.C_SUBSCRIBE:

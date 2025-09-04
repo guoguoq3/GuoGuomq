@@ -1,4 +1,4 @@
-package org.guoguo.consumer;
+package org.guoguo.consumer.test;
 
 import lombok.extern.slf4j.Slf4j;
 import org.guoguo.common.pojo.Entity.MqMessage;
