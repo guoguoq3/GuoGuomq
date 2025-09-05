@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.guoguo.broker.core.BrokerManager;
 import org.guoguo.common.config.MqConfigProperties;
 import org.guoguo.common.pojo.Entity.MqMessage;
+import org.guoguo.common.pojo.Entity.MqMessageEnduring;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -212,7 +213,7 @@ public class FilePersistUtil {
                   //以前想着用外部引用 做this处理 但是这样是最优良的
                   try {
                       // 反序列化为 MqMessage
-                      MqMessage message = JSON.parseObject(messageJson, MqMessage.class);
+                      MqMessageEnduring message = JSON.parseObject(messageJson, MqMessageEnduring.class);
                       // 恢复到 BrokerManager 的内存（messageMap）
                       brokerManager.getMessageMap().put(messageId, message);
                       recoverCount++;

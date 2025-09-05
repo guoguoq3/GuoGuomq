@@ -11,6 +11,7 @@ import org.guoguo.common.pojo.Entity.MqMessage;
 import org.guoguo.common.constant.MethodType;
 import org.guoguo.common.pojo.DTO.RpcMessageDTO;
 import org.guoguo.common.pojo.DTO.SubscribeReqDTO;
+import org.guoguo.common.pojo.Entity.MqMessageEnduring;
 import org.guoguo.common.pojo.VO.PushMessageDTO;
 import org.guoguo.common.util.SnowflakeIdGeneratorUtil;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,9 +37,9 @@ public class BrokerManager {
     private final Map<String, List<Channel>> topicChannelMap = new ConcurrentHashMap<>();
 
     //提供 messageMap 的 getter（供 FilePersistUtil 恢复消息）
-    // 存储消息（简化：内存存储，实际应持久化到文件/数据库）todo: 做持久化
+    // 存储消息（简化：内存存储，实际应持久化到文件/数据库）
     @Getter
-    private final Map<String, MqMessage> messageMap = new ConcurrentHashMap<>();
+    private final Map<String, MqMessageEnduring> messageMap = new ConcurrentHashMap<>();
 
     // 3. 消费状态存储：key=消息ID+":"+消费者ID，value=消费状态（SUCCESS/FAIL）
     private final Map<String, String> messageConsumeMap = new ConcurrentHashMap<>();
@@ -78,9 +79,9 @@ public class BrokerManager {
         log.info("GuoGuomq Broker 开始为消费者{}回溯主题{}的历史消息", consumerId, topic);
 
         // 遍历所有消息，筛选出该主题的消息
-        for (Map.Entry<String, MqMessage> entry : messageMap.entrySet()) {
+        for (Map.Entry<String, MqMessageEnduring> entry : messageMap.entrySet()) {
             String messageId = entry.getKey();
-            MqMessage message = entry.getValue();
+            MqMessageEnduring message = entry.getValue();
 
             // 只处理当前主题的消息
             if (!topic.equals(message.getTopic())) {
@@ -110,14 +111,16 @@ public class BrokerManager {
     /**
      * 处理生产者发送的消息：存储消息并推送给订阅者
      */
-    public void handlerMessage(MqMessage mqMessage,String messageId){
-        //String messageId= String.valueOf(snowflakeIdGeneratorUtil.nextId());
-        messageMap.put(messageId, mqMessage);
-        //做持久化
-        log.info("GuoGuomq=====================>存储消息：{}", messageId);
 
-        //核心持久化时机是在 Broker 接收到生产者的消息后、尚未发送给消费者之前完成存储 todo：生产者做持久化标识
-        filePersistUtil.writeMessage(messageId, mqMessage);
+    public void handlerMessage(MqMessageEnduring mqMessage, String messageId){
+        messageMap.put(messageId, mqMessage);
+        if(mqMessage.isEnduring()){//默认为true，即进行持久化
+            //做持久化
+            log.info("GuoGuomq=====================>存储消息：{}", messageId);
+
+            //核心持久化时机是在 Broker 接收到生产者的消息后、尚未发送给消费者之前完成存储
+            filePersistUtil.writeMessage(messageId, mqMessage);
+        }
 
         //将生产者生产的消息推送给订阅者
         String topic = mqMessage.getTopic();
@@ -128,7 +131,7 @@ public class BrokerManager {
     /**
      * 向消费者推送消息
      */
-    private void pushSingleConsumer(Channel channel, String messageId, MqMessage message) {
+    private void pushSingleConsumer(Channel channel, String messageId, MqMessageEnduring message) {
 
         //构建发送给消费者的消息
         PushMessageDTO pushMsg = new PushMessageDTO();
@@ -156,7 +159,7 @@ public class BrokerManager {
     /*
     推送消息给订阅主题的消费者
      */
-    private void pushMessageToConsumers(String messageId, MqMessage message) {
+    private void pushMessageToConsumers(String messageId, MqMessageEnduring message) {
          String topic=message.getTopic();
          List<Channel> channelList = topicChannelMap.get(topic);
         if (channelList == null || channelList.isEmpty()) {

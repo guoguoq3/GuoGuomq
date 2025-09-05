@@ -1,8 +1,10 @@
 package org.guoguo.producer;
 
 import lombok.extern.slf4j.Slf4j;
-import org.guoguo.common.pojo.Entity.MqMessage;
+
+import org.guoguo.common.pojo.Entity.MqMessageEnduring;
 import org.guoguo.producer.pojo.Result;
+
 import org.guoguo.producer.service.IMqProducer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,17 +27,19 @@ public class MqProducerTest {
     @Test
     public void testSendMessage() {
         // 1. 构建消息
-        MqMessage message = new MqMessage();
+        MqMessageEnduring message = new MqMessageEnduring();
         message.setTopic("TEST_TOPIC"); // 主题需与消费者订阅的一致
         message.setTags(Arrays.asList("TAG1")); // 标签需匹配消费者订阅的标签
         message.setPayload("Hello, GuoGuomq43243242342!"); // 消息内容
         message.setBizKey("TEST_BIZ_KEY"); // 业务标识（可选）
 
+        //message.setEnduring(false);// 是否持久化消息(可选，默认为ture)
+
         // 2. 发送消息
         Result<String> result = mqProducer.send(message);
 
         // 3. 验证发送结果
-        log.info("【生产者测试】发送结果：{}，消息ID：{}", result.getMessageId(), result.getData());
+        log.info("【生产者测试】发送结果：{}，消息ID：{}", result.getData(), result.getMessageId());
         if (result.getCode()==200) {
             log.info("【生产者测试】消息发送成功");
         } else {

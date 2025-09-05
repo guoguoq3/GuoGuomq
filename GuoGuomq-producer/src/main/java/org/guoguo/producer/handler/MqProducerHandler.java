@@ -31,7 +31,9 @@ public class MqProducerHandler extends SimpleChannelInboundHandler<String> {
     protected void channelRead0(ChannelHandlerContext ctx, String msg) {
         RpcMessageDTO rpcDto = JSON.parseObject(msg, RpcMessageDTO.class);
         if (!rpcDto.isRequest()) {
-            producer.setResponse(rpcDto.getTraceId(), rpcDto.getJson());
+            //如果是响应
+            //返回id和消息类型
+            producer.setResponse(rpcDto.getTraceId(),rpcDto.getMethodType());
         }
     }
 }

@@ -11,4 +11,6 @@ public class MethodType {
     public static final String B_SUBSCRIBE_RESPONSE = "B_SUBSCRIBE_RESPONSE";
     // 消费者发送消费确认
     public static final String C_ACK_MSG = "C_ACK_MSG";
+    // Broker向生产者发送确认
+    public static final String P_CONFIRM_MSG = "P_CONFIRM_MSG";
 }
