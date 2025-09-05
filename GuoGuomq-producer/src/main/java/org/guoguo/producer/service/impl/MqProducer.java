@@ -17,7 +17,7 @@ import io.netty.handler.codec.string.StringEncoder;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-import org.guoguo.common.pojo.Entity.MqMessage;
+
 import org.guoguo.common.config.MqConfigProperties;
 import org.guoguo.common.constant.MethodType;
 import org.guoguo.common.pojo.DTO.RpcMessageDTO;
@@ -42,9 +42,6 @@ public class MqProducer implements IMqProducer {
     private final MqConfigProperties config;
     private Channel channel;
     private EventLoopGroup group;
-    private String traceId;
-    //methodType消息确认字段避免空指针设一个默认值
-    private String methodType="sb";
 
     private final SnowflakeIdGeneratorUtil snowflakeIdGeneratorUtil = new SnowflakeIdGeneratorUtil();
 
@@ -62,7 +59,7 @@ public class MqProducer implements IMqProducer {
             Bootstrap bootstrap = new Bootstrap();
             bootstrap.group(group)
                     .channel(NioSocketChannel.class)
-                    .handler(new ChannelInitializer<Channel>() {
+                    .handler(new ChannelInitializer<>() {
                         @Override
                         protected void initChannel(Channel ch) {
                             // 1. 添加分隔符处理器：以换行符 \n 作为消息结束标志
