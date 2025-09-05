@@ -85,12 +85,14 @@ public class MqProducer implements IMqProducer {
         }
     }
 
-    // 新增成员变量和setResponse方法修改
+    //使用ConcurrentHashMap存储traceId与latch等待器的映射
     private final ConcurrentHashMap<String, CountDownLatch> traceIdLatchMap = new ConcurrentHashMap<>();
 
     @Override
+    //使用MqMessageEnduring类封装MqMessage消息实体类，添加持久化选择字段
     public Result<String> send(MqMessageEnduring message) {
         try {
+            //为每个消息通过雪花算法创建独立id
             String currentTraceId = String.valueOf(snowflakeIdGeneratorUtil.nextId());
             RpcMessageDTO rpcMessageDTO = new RpcMessageDTO();
             rpcMessageDTO.setTraceId(currentTraceId);
