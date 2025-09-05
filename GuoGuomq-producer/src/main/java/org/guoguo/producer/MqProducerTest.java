@@ -30,7 +30,7 @@ public class MqProducerTest {
         MqMessageEnduring message = new MqMessageEnduring();
         message.setTopic("TEST_TOPIC"); // 主题需与消费者订阅的一致
         message.setTags(Arrays.asList("TAG1")); // 标签需匹配消费者订阅的标签
-        message.setPayload("Hello, GuoGuomq!"); // 消息内容
+        message.setPayload("Hello, GuoGuomq43243242342!"); // 消息内容
         message.setBizKey("TEST_BIZ_KEY"); // 业务标识（可选）
 
         //message.setEnduring(false);// 是否持久化消息(可选，默认为ture)

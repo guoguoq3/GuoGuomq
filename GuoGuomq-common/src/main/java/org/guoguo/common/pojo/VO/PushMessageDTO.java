@@ -13,4 +13,6 @@ public class PushMessageDTO {
     private String messageId;
     /** 原始消息内容 */
     private MqMessage message;
+    /** 消费者组 */
+    private String consumerGroup;
 }

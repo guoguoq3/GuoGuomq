@@ -111,6 +111,7 @@ public class BrokerManager {
     /**
      * 处理生产者发送的消息：存储消息并推送给订阅者
      */
+
     public void handlerMessage(MqMessageEnduring mqMessage, String messageId){
         messageMap.put(messageId, mqMessage);
         if(mqMessage.isEnduring()){//默认为true，即进行持久化

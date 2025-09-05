@@ -40,6 +40,7 @@ public class MqBrokerHandler extends SimpleChannelInboundHandler<String> {
             case MethodType.P_SEND_MSG:
                 MqMessageEnduring mqMessage=JSON.parseObject(rpcDto.getJson(), MqMessageEnduring.class);
                 log.info("GuoGuomq================>   Broker收到消息：" + mqMessage);
+                
                 //处理生产者发送消息 并返回确认告知生产者消息已收到,
                 brokerManager.handlerMessage(mqMessage,rpcDto.getTraceId());
                 sendSuccessResponse(MethodType.P_CONFIRM_MSG, ctx,rpcDto.getTraceId());

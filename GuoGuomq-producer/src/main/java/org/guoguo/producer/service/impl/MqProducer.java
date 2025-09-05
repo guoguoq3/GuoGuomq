@@ -82,6 +82,7 @@ public class MqProducer implements IMqProducer {
         }
     }
 
+
     //使用ConcurrentHashMap存储traceId与latch等待器的映射
     private final ConcurrentHashMap<String, CountDownLatch> traceIdLatchMap = new ConcurrentHashMap<>();
 
