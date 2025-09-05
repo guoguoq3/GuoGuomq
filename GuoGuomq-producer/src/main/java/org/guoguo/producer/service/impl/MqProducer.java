@@ -80,7 +80,11 @@ public class MqProducer implements IMqProducer {
             log.error("生产者连接 Broker 失败", e);
         }
     }
-
+//fork+pr测试
+    //11
+    //22
+    //33
+    //44
     @Override
     public Result<String> send(MqMessage message) {
         try {
