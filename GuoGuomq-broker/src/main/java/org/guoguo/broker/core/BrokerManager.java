@@ -230,7 +230,7 @@ public class BrokerManager {
                 rpcDto.setTraceId(String.valueOf(snowflakeIdGeneratorUtil.nextId()));
                 rpcDto.setMethodType(MethodType.B_PUSH_MSG);
                 rpcDto.setJson(JSON.toJSONString(pushDto));
-
+                System.out.println(onlineConsumers);
                 targetChannel.writeAndFlush(JSON.toJSONString(rpcDto) + "\n"); // 带分隔符
                 log.info("GuoGuomq Broker 向组{}的消费者{}推送消息{}", groupId, targetConsumerId, messageId);
             }

@@ -28,29 +28,42 @@ public class MqProducerTest {
     @Test
     public void testSendMessage() {
 
-        MqMessageEnduring msg1 = new MqMessageEnduring();
-        msg1.setTopic("TEST_TOPIC");
-        msg1.setTags(Arrays.asList("TAG1"));
-        msg1.setPayload("组测试消息1");
-
-        MqMessageEnduring msg2 = new MqMessageEnduring();
-        msg2.setTopic("TEST_TOPIC");
-        msg2.setTags(Arrays.asList("TAG1"));
-        msg2.setPayload("组测试消息2");
-
-        Result<String> send = mqProducer.send(msg1);
-        Result<String> send1 = mqProducer.send(msg2);
-        //message.setEnduring(false);// 是否持久化消息(可选，默认为ture)
+//        MqMessageEnduring msg1 = new MqMessageEnduring();
+//        msg1.setTopic("TEST_TOPIC");
+//        msg1.setTags(Arrays.asList("TAG1"));
+//        msg1.setPayload("组测试消息1");
+//
+//        MqMessageEnduring msg2 = new MqMessageEnduring();
+//        msg2.setTopic("TEST_TOPIC");
+//        msg2.setTags(Arrays.asList("TAG1"));
+//        msg2.setPayload("组测试消息2");
+//
+//        MqMessageEnduring msg3 = new MqMessageEnduring();
+//        msg3.setTopic("TEST_TOPIC");
+//        msg3.setTags(Arrays.asList("TAG1"));
+//        msg3.setPayload("组测试消息3");
+//
+//        Result<String> send = mqProducer.send(msg1);
+//        Result<String> send0 = mqProducer.send(msg3);
+//        Result<String> send1 = mqProducer.send(msg2);
+//        //message.setEnduring(false);// 是否持久化消息(可选，默认为ture)
 
         // 2. 发送消息
+        for (int i = 0; i < 1000; i++){
+            MqMessageEnduring message = new MqMessageEnduring();
+            message.setTopic("TEST_TOPIC");
+            message.setTags(Arrays.asList("TAG1"));
+            message.setPayload("测试消息" + i);
+            Result<String> result = mqProducer.send(message);
+        }
 
 
         // 3. 验证发送结果
-        log.info("【生产者测试】发送结果：{}，消息ID：{}", send1.getData(), send1.getMessageId());
-        if (send1.getCode()==200) {
-            log.info("【生产者测试】消息发送成功");
-        } else {
-            log.error("【生产者测试】消息发送失败");
-        }
+        log.info("【生产者测试】发送结果：{}，消息ID：{}");
+//        if (re.getCode()==200) {
+//            log.info("【生产者测试】消息发送成功");
+//        } else {
+//            log.error("【生产者测试】消息发送失败");
+//        }
     }
 }
