@@ -13,8 +13,8 @@ public class SubscribeReqDTO {
     private String topic;
     /** 标签过滤（如 ["TAG1", "TAG2"]，暂时简单处理为精确匹配） */
     private List<String> tags;
-    //消费者组
-    private String consumerGroup;
+
+    private String groupId;
 
 
 

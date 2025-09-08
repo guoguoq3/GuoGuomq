@@ -17,41 +17,45 @@ import io.netty.handler.codec.string.StringEncoder;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-import org.guoguo.common.pojo.Entity.MqMessage;
+import org.awaitility.reflect.FieldAnnotationMatcherStrategy;
 import org.guoguo.common.config.MqConfigProperties;
-import org.guoguo.common.constant.MethodType;
-import org.guoguo.common.pojo.DTO.RpcMessageDTO;
-import org.guoguo.common.pojo.DTO.SubscribeReqDTO;
 import org.guoguo.consumer.handler.MqConsumerHandler;
 import org.guoguo.consumer.service.IMessageListener;
 import org.guoguo.consumer.service.IMqConsumer;
 import org.guoguo.common.util.SnowflakeIdGeneratorUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
 @Component // 交给 Spring 管理
-public class MqConsumer implements IMqConsumer {
+public abstract class MqConsumer implements IMqConsumer {
     private final MqConfigProperties config;
-    private Channel channel;
+    protected Channel channel;
     private EventLoopGroup group;
 
-    private final Map<String, IMessageListener> topicListenerMap = new HashMap<>();
-    private final SnowflakeIdGeneratorUtil snowflakeIdGeneratorUtil = new SnowflakeIdGeneratorUtil();
+    protected final Map<String, IMessageListener> topicListenerMap = new HashMap<>();
 
+
+    // 延迟注入 Handler（由 Spring 管理，避免构造时依赖）
+    private MqConsumerHandler mqConsumerHandler;
     // 注入配置
     @Autowired
-    public MqConsumer(MqConfigProperties config) {
+    public MqConsumer( MqConfigProperties config) {
         this.config = config;
+
     }
+
 
     // 初始化时连接 Broker
     @PostConstruct
     @Override
     public void start() {
+        mqConsumerHandler = new MqConsumerHandler(this);
         group = new NioEventLoopGroup();
         try {
             Bootstrap bootstrap = new Bootstrap();
@@ -67,7 +71,7 @@ public class MqConsumer implements IMqConsumer {
                                     .addLast(new DelimiterBasedFrameDecoder(1024 * 1024, delimiter))
                                     .addLast(new StringDecoder())
                                     .addLast(new StringEncoder())
-                                    .addLast(new MqConsumerHandler(MqConsumer.this));
+                                    .addLast(mqConsumerHandler);
                         }
                     });
 
@@ -80,38 +84,11 @@ public class MqConsumer implements IMqConsumer {
         }
     }
 
-    @Override
-    public void subscribe(SubscribeReqDTO subscribeReqDto, IMessageListener listener) {
-        if (channel == null || !channel.isActive()) {
-            throw new RuntimeException("未连接到 Broker，请先调用 start() 方法");
-        }
-
-        String topic = subscribeReqDto.getTopic();
-        topicListenerMap.put(topic, listener);
-
-        RpcMessageDTO rpcDto = new RpcMessageDTO();
-        rpcDto.setRequest(true);
-        rpcDto.setTraceId(String.valueOf(snowflakeIdGeneratorUtil.nextId()));
-        rpcDto.setMethodType(MethodType.C_SUBSCRIBE);
-        rpcDto.setJson(JSON.toJSONString(subscribeReqDto));
-        channel.writeAndFlush(JSON.toJSONString(rpcDto) + "\n");
-        log.info("消费者订阅主题：{}", topic);
+    public Map<String, IMessageListener> getTopicListenerMap() {
+        return Collections.unmodifiableMap(topicListenerMap);
     }
 
-    public boolean handlerMessage(String topic, MqMessage message) {
-        IMessageListener listener = topicListenerMap.get(topic);
-        if (listener == null) {
-            log.error("GuoGuomq 消费者无主题{}的监听器，消息处理失败", topic);
-            return false;
-        }
-        try {
-            // 调用用户自定义的监听器逻辑，返回处理结果
-            return listener.onMessage(message);
-        } catch (Exception e) {
-            log.error("GuoGuomq 消费者监听器处理消息异常：主题={}", topic, e);
-            return false;
-        }
-    }
+
     @PreDestroy
     public void close() {
         if (group != null) {

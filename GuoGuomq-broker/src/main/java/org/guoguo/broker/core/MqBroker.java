@@ -13,6 +13,7 @@ import io.netty.handler.codec.string.StringEncoder;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.guoguo.broker.ConsumerGroup.ConsumerGroupManager;
 import org.guoguo.broker.handler.MqBrokerHandler;
 import org.guoguo.broker.util.FilePersistUtil;
 import org.guoguo.common.config.MqConfigProperties;
@@ -25,16 +26,16 @@ public class MqBroker {
     private final MqConfigProperties config;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
-    private final MqBrokerHandler mqBrokerHandler;
+    private FilePersistUtil filePersistUtil;
 
-    private final FilePersistUtil filePersistUtil;
+   private final MqBrokerHandler mqBrokerHandler;
 
 
     // 构造器注入配置
     @Autowired
-    public MqBroker(MqConfigProperties config,MqBrokerHandler mqBrokerHandler,FilePersistUtil filePersistUtil) {
+    public MqBroker(MqConfigProperties config, MqBrokerHandler mqBrokerHandler, FilePersistUtil filePersistUtil) {
         this.config = config;
-        this.mqBrokerHandler = mqBrokerHandler;
+        this.mqBrokerHandler=mqBrokerHandler;
         this.filePersistUtil = filePersistUtil;
     }
 

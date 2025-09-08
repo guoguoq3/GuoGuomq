@@ -2,6 +2,7 @@ package org.guoguo.producer;
 
 import lombok.extern.slf4j.Slf4j;
 
+import org.guoguo.common.pojo.Entity.MqMessage;
 import org.guoguo.common.pojo.Entity.MqMessageEnduring;
 import org.guoguo.producer.pojo.Result;
 
@@ -26,21 +27,27 @@ public class MqProducerTest {
 
     @Test
     public void testSendMessage() {
-        // 1. 构建消息
-        MqMessageEnduring message = new MqMessageEnduring();
-        message.setTopic("TEST_TOPIC"); // 主题需与消费者订阅的一致
-        message.setTags(Arrays.asList("TAG1")); // 标签需匹配消费者订阅的标签
-        message.setPayload("Hello, GuoGuomq43243242342!"); // 消息内容
-        message.setBizKey("TEST_BIZ_KEY"); // 业务标识（可选）
 
+        MqMessageEnduring msg1 = new MqMessageEnduring();
+        msg1.setTopic("TEST_TOPIC");
+        msg1.setTags(Arrays.asList("TAG1"));
+        msg1.setPayload("组测试消息1");
+
+        MqMessageEnduring msg2 = new MqMessageEnduring();
+        msg2.setTopic("TEST_TOPIC");
+        msg2.setTags(Arrays.asList("TAG1"));
+        msg2.setPayload("组测试消息2");
+
+        Result<String> send = mqProducer.send(msg1);
+        Result<String> send1 = mqProducer.send(msg2);
         //message.setEnduring(false);// 是否持久化消息(可选，默认为ture)
 
         // 2. 发送消息
-        Result<String> result = mqProducer.send(message);
+
 
         // 3. 验证发送结果
-        log.info("【生产者测试】发送结果：{}，消息ID：{}", result.getData(), result.getMessageId());
-        if (result.getCode()==200) {
+        log.info("【生产者测试】发送结果：{}，消息ID：{}", send1.getData(), send1.getMessageId());
+        if (send1.getCode()==200) {
             log.info("【生产者测试】消息发送成功");
         } else {
             log.error("【生产者测试】消息发送失败");
