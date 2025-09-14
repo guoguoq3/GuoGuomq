@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSON;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import org.guoguo.common.pojo.DTO.ProducerMessageDTO;
 import org.guoguo.common.pojo.DTO.RpcMessageDTO;
 import org.guoguo.producer.service.impl.MqProducer;
 /*
@@ -33,7 +34,8 @@ public class MqProducerHandler extends SimpleChannelInboundHandler<String> {
         if (!rpcDto.isRequest()) {
             //如果是响应
             //返回id和消息类型
-            producer.setResponse(rpcDto.getTraceId(),rpcDto.getMethodType());
+            ProducerMessageDTO producerDto = JSON.parseObject(rpcDto.getJson(), ProducerMessageDTO.class);
+            producer.setResponse(producerDto.getMessageId(),rpcDto.getMethodType(),producerDto.getCurrentVersion());
         }
     }
 }

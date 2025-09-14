@@ -30,6 +30,10 @@ public class ConsumerGroupManager {
 
     //获取创建消费者组 没有就创建
     public ConsumerGroup getOrCreateConsumerGroup(String groupId) {
+        //检查groupId是否为null
+        if (groupId == null) {
+            throw new IllegalArgumentException("GroupId cannot be null");
+        }
         //相当于若是不存在就创建的方法
         return groupMap.computeIfAbsent(groupId, k -> {
             ConsumerGroup consumerGroup = new ConsumerGroup();
@@ -41,6 +45,16 @@ public class ConsumerGroupManager {
 
     //消费者订阅主题
     public void GroupSubscribe(SubscribeReqDTO subscribeReqDTO) {
+        //检查subscribeReqDTO是否为null
+        if (subscribeReqDTO == null) {
+            log.error("SubscribeReqDTO is null");
+            return;
+        }
+        //检查groupId是否为null
+        if (subscribeReqDTO.getGroupId() == null) {
+            log.error("GroupId is null in SubscribeReqDTO: {}", subscribeReqDTO);
+            return;
+        }
         String topic = subscribeReqDTO.getTopic();
         ConsumerGroup consumerGroup = getOrCreateConsumerGroup(subscribeReqDTO.getGroupId());
 
@@ -52,6 +66,19 @@ public class ConsumerGroupManager {
 
     //消费者加入组
     public void consumerJoinGroup(String groupId, String consumerId, io.netty.channel.Channel channel) {
+        //检查参数是否为null
+        if (groupId == null) {
+            log.error("GroupId is null in consumerJoinGroup");
+            return;
+        }
+        if (consumerId == null) {
+            log.error("ConsumerId is null in consumerJoinGroup");
+            return;
+        }
+        if (channel == null) {
+            log.error("Channel is null in consumerJoinGroup");
+            return;
+        }
         ConsumerGroup consumerGroup = getOrCreateConsumerGroup(groupId);
         consumerGroup.addConsumer(consumerId, channel);
     }
@@ -59,6 +86,15 @@ public class ConsumerGroupManager {
 
     // 消费者组取消订阅主题
     public void groupUnsubscribe(String groupId, String topic) {
+        //检查参数是否为null
+        if (groupId == null) {
+            log.warn("GuoGuomq Broker groupId is null, 取消订阅失败");
+            return;
+        }
+        if (topic == null) {
+            log.warn("GuoGuomq Broker topic is null, 取消订阅失败");
+            return;
+        }
         ConsumerGroup group = groupMap.get(groupId);
         if (group == null) {
             log.warn("GuoGuomq Broker 消费者组{}不存在，取消订阅失败", groupId);
@@ -70,6 +106,15 @@ public class ConsumerGroupManager {
 
     //消费者离开组
     public void consumerLeaveGroup(String groupId, String consumerId) {
+        //检查参数是否为null
+        if (groupId == null) {
+            log.warn("GuoGuomq Broker groupId is null, 消费者离开组失败");
+            return;
+        }
+        if (consumerId == null) {
+            log.warn("GuoGuomq Broker consumerId is null, 消费者离开组失败");
+            return;
+        }
         ConsumerGroup consumerGroup = groupMap.get(groupId);
         if (consumerGroup == null) {
             return;
@@ -86,6 +131,11 @@ public class ConsumerGroupManager {
 
     //获取订阅了指定主题的所有消费者组
     public Map<String, ConsumerGroup> getGroupsByTopic(String topic) {
+        //检查参数是否为null
+        if (topic == null) {
+            log.warn("GuoGuomq Broker topic is null in getGroupsByTopic");
+            return new ConcurrentHashMap<>();
+        }
         Map<String, ConsumerGroup> result = new ConcurrentHashMap<>();
         for (ConsumerGroup group : groupMap.values()) {
             if (group.getSubscribeMap().containsKey(topic)) {
@@ -97,6 +147,19 @@ public class ConsumerGroupManager {
 
     // 更新消费者组的消费位点
     public void updateGroupOffset(String groupId, String topic, String messageId) {
+        //检查参数是否为null
+        if (groupId == null) {
+            log.warn("GuoGuomq Broker groupId is null, 无法更新位点");
+            return;
+        }
+        if (topic == null) {
+            log.warn("GuoGuomq Broker topic is null, 无法更新位点");
+            return;
+        }
+        if (messageId == null) {
+            log.warn("GuoGuomq Broker messageId is null, 无法更新位点");
+            return;
+        }
         ConsumerGroup consumerGroup = groupMap.get(groupId);
         if (consumerGroup == null) {
             log.warn("GuoGuomq Broker 消费者组{}不存在，无法更新位点", groupId);

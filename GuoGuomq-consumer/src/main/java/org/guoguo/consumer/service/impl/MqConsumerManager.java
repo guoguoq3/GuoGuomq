@@ -8,6 +8,7 @@ import org.guoguo.common.constant.MethodType;
 import org.guoguo.common.pojo.DTO.ConsumerAckReqDTO;
 import org.guoguo.common.pojo.DTO.RpcMessageDTO;
 import org.guoguo.common.pojo.DTO.SubscribeReqDTO;
+import org.guoguo.common.pojo.Entity.ConsumerThings;
 import org.guoguo.common.pojo.Entity.MqMessage;
 import org.guoguo.common.util.SnowflakeIdGeneratorUtil;
 import org.guoguo.consumer.service.IMessageListener;
@@ -28,7 +29,7 @@ public class MqConsumerManager extends MqConsumer {
     // 消费者所属的组（支持多组，简化为单组）
     private String currentGroupId;
 
-    private final SnowflakeIdGeneratorUtil snowflakeIdGeneratorUtil = new SnowflakeIdGeneratorUtil();
+
 
 
     @Override
@@ -44,9 +45,10 @@ public class MqConsumerManager extends MqConsumer {
         // 发送“加入组”请求给Broker
         RpcMessageDTO rpcDto = new RpcMessageDTO();
         rpcDto.setRequest(true);
-        rpcDto.setTraceId(String.valueOf(snowflakeIdGeneratorUtil.nextId()));
+        ConsumerThings consumerThings = new ConsumerThings();
+        consumerThings.setJson(groupId);// 直接传组ID字符串
+        rpcDto.setJson(JSON.toJSONString(consumerThings));
         rpcDto.setMethodType(MethodType.CONSUMER_JOIN_GROUP);
-        rpcDto.setJson(groupId); // 直接传组ID字符串
 
         channel.writeAndFlush(JSON.toJSONString(rpcDto) + "\n");
         this.currentGroupId = groupId;
@@ -63,9 +65,10 @@ public class MqConsumerManager extends MqConsumer {
         // 发送“离开组”请求给Broker
         RpcMessageDTO rpcDto = new RpcMessageDTO();
         rpcDto.setRequest(true);
-        rpcDto.setTraceId(String.valueOf(snowflakeIdGeneratorUtil.nextId()));
+        ConsumerThings consumerThings = new ConsumerThings();
+        consumerThings.setJson(groupId);// 直接传组ID字符串
+        rpcDto.setJson(JSON.toJSONString(consumerThings));
         rpcDto.setMethodType(MethodType.CONSUMER_LEAVE_GROUP);
-        rpcDto.setJson(groupId);
 
         channel.writeAndFlush(JSON.toJSONString(rpcDto) + "\n");
         if (groupId.equals(currentGroupId)) {
@@ -89,13 +92,11 @@ public class MqConsumerManager extends MqConsumer {
         System.out.println(topicListenerMap);
         // 填充组ID（确保订阅请求关联当前组）
         subscribeReq.setGroupId(currentGroupId);
-
         // 发送“组订阅”请求给Broker
         RpcMessageDTO rpcDto = new RpcMessageDTO();
         rpcDto.setRequest(true);
-        rpcDto.setTraceId(String.valueOf(snowflakeIdGeneratorUtil.nextId()));
-        rpcDto.setMethodType(MethodType.GROUP_SUBSCRIBE);
         rpcDto.setJson(JSON.toJSONString(subscribeReq));
+        rpcDto.setMethodType(MethodType.GROUP_SUBSCRIBE);
 
         channel.writeAndFlush(JSON.toJSONString(rpcDto) + "\n");
         log.info("GuoGuomq 消费者请求组{}订阅主题{}", currentGroupId, topic);
@@ -117,9 +118,10 @@ public class MqConsumerManager extends MqConsumer {
         // 发送“组取消订阅”请求给Broker
         RpcMessageDTO rpcDto = new RpcMessageDTO();
         rpcDto.setRequest(true);
-        rpcDto.setTraceId(String.valueOf(snowflakeIdGeneratorUtil.nextId()));
+        ConsumerThings consumerThings = new ConsumerThings();
+        consumerThings.setJson(JSON.toJSONString(subscribeReq));
+        rpcDto.setJson(JSON.toJSONString(consumerThings));
         rpcDto.setMethodType(MethodType.GROUP_UNSUBSCRIBE);
-        rpcDto.setJson(JSON.toJSONString(subscribeReq));
 
         channel.writeAndFlush(JSON.toJSONString(rpcDto) + "\n");
         // 移除监听器
@@ -169,7 +171,6 @@ public class MqConsumerManager extends MqConsumer {
         // 发送ACK
         RpcMessageDTO rpcDto = new RpcMessageDTO();
         rpcDto.setRequest(true);
-        rpcDto.setTraceId(String.valueOf(snowflakeIdGeneratorUtil.nextId()));
         rpcDto.setMethodType(MethodType.C_ACK_MSG);
         rpcDto.setJson(JSON.toJSONString(ackReq));
 

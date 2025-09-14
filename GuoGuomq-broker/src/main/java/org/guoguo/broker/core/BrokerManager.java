@@ -2,8 +2,6 @@ package org.guoguo.broker.core;
 
 import com.alibaba.fastjson.JSON;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelId;
-import io.netty.util.internal.StringUtil;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.guoguo.broker.ConsumerGroup.ConsumerGroupManager;
@@ -13,25 +11,22 @@ import org.guoguo.common.pojo.Entity.ConsumerGroup;
 import org.guoguo.common.pojo.Entity.MqMessage;
 import org.guoguo.common.constant.MethodType;
 import org.guoguo.common.pojo.DTO.RpcMessageDTO;
-import org.guoguo.common.pojo.DTO.SubscribeReqDTO;
 import org.guoguo.common.pojo.Entity.MqMessageEnduring;
-import org.guoguo.common.pojo.VO.PushMessageDTO;
+import org.guoguo.common.pojo.DTO.PushMessageDTO;
 import org.guoguo.common.util.SnowflakeIdGeneratorUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 @Component
 public class BrokerManager {
-    private final SnowflakeIdGeneratorUtil snowflakeIdGeneratorUtil = new SnowflakeIdGeneratorUtil();
+
     // 注入消费者组管理器
     private final ConsumerGroupManager groupManager;
 
@@ -137,14 +132,14 @@ public class BrokerManager {
      * 处理生产者发送的消息：存储消息并推送给订阅者
      */
     public void handlerMessage(MqMessageEnduring mqMessage, String messageId){
-
         messageMap.put(messageId, mqMessage);
-
-        //核心持久化时机是在 Broker 接收到生产者的消息后、尚未发送给消费者之前完成存储 todo：生产者做持久化标识
-        filePersistUtil.writeMessage(messageId, mqMessage);
-        //做持久化
-        log.info("GuoGuomq Broker 存储消息：ID={}，主题={}", messageId, mqMessage.getTopic());
-
+        //默认为true，即进行持久化
+        if(mqMessage.isEnduring()){
+            //持久化
+            log.info("GuoGuomq Broker 存储消息：ID={}，主题={}", messageId, mqMessage.getTopic());
+            //核心持久化时机是在 Broker 接收到生产者的消息后、尚未发送给消费者之前完成存储
+            filePersistUtil.writeMessage(messageId, mqMessage);
+        }
         //将生产者生产的消息推送给订阅者
         String topic = mqMessage.getTopic();
         Map<String, ConsumerGroup> subscribeGroups = groupManager.getGroupsByTopic(topic);
@@ -166,12 +161,11 @@ public class BrokerManager {
         //构建发送给消费者的消息
         PushMessageDTO pushMsg = new PushMessageDTO();
         pushMsg.setMessageId(messageId);
-        pushMsg.setMessage(message);
+        pushMsg.setJson(String.valueOf(message));
         pushMsg.setConsumerGroup(consumerGroup);
 
         //包装为RPC消息
         RpcMessageDTO rpcMessageDTO = new RpcMessageDTO();
-        rpcMessageDTO.setTraceId(String.valueOf(snowflakeIdGeneratorUtil.nextId()));
         rpcMessageDTO.setRequest(false);
         rpcMessageDTO.setMethodType(MethodType.B_PUSH_MSG);
         rpcMessageDTO.setJson(JSON.toJSONString(pushMsg));
@@ -223,11 +217,9 @@ public class BrokerManager {
             if (targetChannel.isActive()) {
                 PushMessageDTO pushDto = new PushMessageDTO();
                 pushDto.setMessageId(messageId);
-                pushDto.setMessage(message);
-
+                pushDto.setJson(String.valueOf(message));
                 RpcMessageDTO rpcDto = new RpcMessageDTO();
                 rpcDto.setRequest(false);
-                rpcDto.setTraceId(String.valueOf(snowflakeIdGeneratorUtil.nextId()));
                 rpcDto.setMethodType(MethodType.B_PUSH_MSG);
                 rpcDto.setJson(JSON.toJSONString(pushDto));
 

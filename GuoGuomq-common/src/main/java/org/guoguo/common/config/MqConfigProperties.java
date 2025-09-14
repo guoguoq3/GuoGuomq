@@ -13,13 +13,17 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "guoguomq") // 配置前缀
 public class MqConfigProperties {
     /** Broker 地址（默认：127.0.0.1） */
-    private String brokerHost = "127.0.0.1";
+    private String brokerHost ;
     /** Broker 端口（默认：9999） */
-    private int brokerPort = 9999;
+    private int brokerPort ;
     /** 生产者超时时间（毫秒，默认：4000） */
-    private int producerTimeout = 4000;
+    private int producerTimeout ;
     /** 消费者连接超时时间（毫秒，默认：5000） */
-    private int consumerTimeout = 5000;
+    private int consumerTimeout ;
+    /** 生产者最大重试次数（默认：3） */
+    private int producerRetryCountLimit ;
+    /** 消费者重试时间系数（默认：500） */
+    private int producerRetryTimeCoefficient ;
 
     //新增持久化配置
     /** 消息持久化文件路径（默认：项目根目录下的 guoguomq-data 文件夹） */

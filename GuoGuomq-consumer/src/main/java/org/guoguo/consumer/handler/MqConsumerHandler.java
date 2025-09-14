@@ -4,15 +4,12 @@ import com.alibaba.fastjson.JSON;
 import io.netty.channel.*;
 import lombok.extern.slf4j.Slf4j;
 import org.guoguo.common.constant.MethodType;
-import org.guoguo.common.pojo.DTO.ConsumerAckReqDTO;
 import org.guoguo.common.pojo.DTO.RpcMessageDTO;
+import org.guoguo.common.pojo.Entity.FunctionEntity;
 import org.guoguo.common.pojo.Entity.MqMessage;
-import org.guoguo.common.pojo.VO.PushMessageDTO;
-import org.guoguo.consumer.service.IMessageListener;
+import org.guoguo.common.pojo.DTO.PushMessageDTO;
 import org.guoguo.consumer.service.impl.MqConsumer;
 import org.guoguo.consumer.service.impl.MqConsumerManager;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 @Slf4j
@@ -43,14 +40,15 @@ public class MqConsumerHandler extends SimpleChannelInboundHandler<String> {
            // 解析 Broker 发送的消息
            RpcMessageDTO rpcDto = JSON.parseObject(msg, RpcMessageDTO.class);
            String methodType = rpcDto.getMethodType();
-           log.info("消费者收到消息：{}", rpcDto);
+           FunctionEntity functionEntity = JSON.parseObject(rpcDto.getJson(), FunctionEntity.class);
+           log.info("消费者收到消息：{}", functionEntity.getJson());
 
           //监听各处传来的消息
            if (MethodType.B_PUSH_MSG.equals(methodType)) {
                // 处理消息推送（原逻辑不变）
                PushMessageDTO pushMsg = JSON.parseObject(rpcDto.getJson(), PushMessageDTO.class);
                String messageId = pushMsg.getMessageId();
-               MqMessage message = pushMsg.getMessage();
+               MqMessage message = JSON.parseObject(pushMsg.getJson(), MqMessage.class);
                String topic = message.getTopic();
 
 
@@ -67,7 +65,7 @@ public class MqConsumerHandler extends SimpleChannelInboundHandler<String> {
 
                // 处理Broker的响应（如加入组成功、订阅成功）统一返回
            }else if (!rpcDto.isRequest()) {
-                   String response = rpcDto.getJson();
+                   String response = functionEntity.getJson();
                    if (response.startsWith("ERROR")) {
                        log.error("GuoGuomq 消费者收到Broker错误响应：{}", response);
                    } else {

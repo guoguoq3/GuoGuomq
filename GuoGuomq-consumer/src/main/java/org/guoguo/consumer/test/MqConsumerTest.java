@@ -3,6 +3,7 @@ package org.guoguo.consumer.test;
 import lombok.extern.slf4j.Slf4j;
 import org.guoguo.common.pojo.Entity.MqMessage;
 import org.guoguo.common.pojo.DTO.SubscribeReqDTO;
+import org.guoguo.common.util.SnowflakeIdGeneratorUtil;
 import org.guoguo.consumer.service.IMessageListener;
 import org.guoguo.consumer.service.IMqConsumer;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ public class MqConsumerTest {
 
     // 用于同步测试：等待消息接收后再结束测试
     private final CountDownLatch latch = new CountDownLatch(1);
+
 
     @Test
     public void testReceiveMessage() throws InterruptedException {

@@ -3,6 +3,7 @@ package org.guoguo.consumer.test;
 import lombok.extern.slf4j.Slf4j;
 import org.guoguo.common.pojo.DTO.SubscribeReqDTO;
 import org.guoguo.common.pojo.Entity.MqMessage;
+import org.guoguo.common.util.SnowflakeIdGeneratorUtil;
 import org.guoguo.consumer.service.IMessageListener;
 import org.guoguo.consumer.service.impl.MqConsumerManager;
 import org.junit.jupiter.api.Test;
