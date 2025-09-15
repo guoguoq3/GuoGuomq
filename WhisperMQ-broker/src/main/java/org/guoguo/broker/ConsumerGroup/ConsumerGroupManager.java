@@ -1,29 +1,41 @@
 package org.guoguo.broker.ConsumerGroup;
 
+import io.micrometer.common.util.StringUtils;
 import lombok.Data;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.guoguo.broker.core.BrokerManager;
+import org.guoguo.broker.util.OffsetPersistUtil;
 import org.guoguo.common.pojo.DTO.SubscribeReqDTO;
 import org.guoguo.common.pojo.Entity.ConsumerGroup;
+import org.guoguo.common.pojo.Entity.MqMessage;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
-//@Data
 public class ConsumerGroupManager {
     /**
      * 存储所有消费者组：key=组ID，value=消费者组实体
      */
 
     private final Map<String, ConsumerGroup> groupMap = new ConcurrentHashMap<>();
-
+    private final OffsetPersistUtil offsetPersistUtil;
+    private final BrokerManager brokerManager;
     //这里返回一个不可修改的视图
     public Map<String, ConsumerGroup> getGroupMap() {
         return Collections.unmodifiableMap(groupMap);
+    }
+    @Autowired
+    public ConsumerGroupManager(OffsetPersistUtil offsetPersistUtil, BrokerManager brokerManager) {
+        this.offsetPersistUtil = offsetPersistUtil;
+        this.brokerManager = brokerManager;
     }
 
     // return new HashMap<>(groupMap); 深拷贝方法
@@ -38,30 +50,73 @@ public class ConsumerGroupManager {
         return groupMap.computeIfAbsent(groupId, k -> {
             ConsumerGroup consumerGroup = new ConsumerGroup();
             consumerGroup.setGroupId(groupId);
+
+
             log.info("WhisperMQ=====================>消费者组不存在 创建消费者组：{}", groupId);
             return consumerGroup;
         });
     }
 
-    //消费者订阅主题
+    //消费者订阅主题  其实直接调用这个方法调用就行不必再创建消费者组
     public void GroupSubscribe(SubscribeReqDTO subscribeReqDTO) {
         //检查subscribeReqDTO是否为null
         if (subscribeReqDTO == null) {
             log.error("SubscribeReqDTO is null");
             return;
         }
+        String groupId = subscribeReqDTO.getGroupId();
+        String topic = subscribeReqDTO.getTopic();
+        List<String> tags = subscribeReqDTO.getTags();
+
+        if (StringUtils.isBlank(groupId)) {
+            log.error("WhisperMQ Broker 订阅失败：消费者组 ID（groupId）不能为 null/空");
+            return;
+        }
+        if (StringUtils.isBlank(topic)) {
+            log.error("WhisperMQ Broker 订阅失败：主题（topic）不能为 null/空（组：{}）", groupId);
+            return;
+        }
+        if (tags == null) {
+            subscribeReqDTO.setTags(Collections.emptyList()); // 空标签视为“订阅所有标签”
+            log.warn("WhisperMQ Broker 订阅主题{}（组：{}）：标签为 null，自动调整为订阅所有标签", topic, groupId);
+        }
+
         //检查groupId是否为null
         if (subscribeReqDTO.getGroupId() == null) {
             log.error("GroupId is null in SubscribeReqDTO: {}", subscribeReqDTO);
             return;
         }
-        String topic = subscribeReqDTO.getTopic();
         ConsumerGroup consumerGroup = getOrCreateConsumerGroup(subscribeReqDTO.getGroupId());
+
+        if (consumerGroup.getSubscribeMap().containsKey(topic)) {
+            log.warn("WhisperMQ Broker 订阅关系已存在，请勿重复订阅");
+            return;
+        }
+
+        //回溯一波位点
+        offsetPersistUtil.init(consumerGroup, topic);
+        String lastOffset = consumerGroup.getTopicOffsetMap().get(topic);
+        if (lastOffset == null){
+           log.info("WhisperMQ Broker 组{}订阅主题{}：无历史位点，位点为最新的消息", groupId, topic);
+            consumerGroup.addSubscribe(subscribeReqDTO);
+       }else {
 
         //记录组的订阅关系
         consumerGroup.addSubscribe(subscribeReqDTO);
         log.info("WhisperMQ Broker 消费者组{}订阅主题{}（标签：{}）",
                 subscribeReqDTO.getGroupId(), topic, subscribeReqDTO.getTags());
+
+           //获取在消费者位点之后的消息 两个条件一个是大于lastOffset 一个是topic相同  todo：可能还会有tag的事情
+            List<Map.Entry<String, MqMessage>> filteredMessagesStream = brokerManager.getMessageMap().entrySet().stream()
+                    .filter(entry -> topic.equals(entry.getValue().getTopic())) // 主题匹配
+                    .filter(entry -> Long.parseLong(entry.getKey()) > Long.parseLong(lastOffset)) // ID大于lastOffset
+                    .toList();
+
+
+            for (Map.Entry<String, MqMessage> entry : filteredMessagesStream) {
+            brokerManager.pushMessageToGroup(consumerGroup, entry.getKey(), entry.getValue());
+        }
+        }
     }
 
     //消费者加入组
@@ -169,6 +224,7 @@ public class ConsumerGroupManager {
         String currentOffset = consumerGroup.getTopicOffsetMap().get(topic);
         if (currentOffset == null || Long.parseLong(messageId) > Long.parseLong(currentOffset)) {
             consumerGroup.getTopicOffsetMap().put(topic, messageId);
+            offsetPersistUtil.writeMessage(groupId, topic, messageId);
             log.info("WhisperMQ Broker 更新组{}的主题{}消费位点至消息{}",
                     groupId, topic, messageId);
         }
