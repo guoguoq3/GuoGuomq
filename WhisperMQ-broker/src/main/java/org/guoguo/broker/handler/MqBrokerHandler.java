@@ -98,7 +98,7 @@ public class MqBrokerHandler extends SimpleChannelInboundHandler<String> {
                     ProducerMessageDTO pmsDto=JSON.parseObject(rpcDto.getJson(), ProducerMessageDTO.class);
                     MqMessageEnduring mqMessage=JSON.parseObject(pmsDto.getJson(), MqMessageEnduring.class);
                     brokerManager.handlerMessage(mqMessage,funcDto.getMessageId());
-                    //sendSuccessResponse(ctx,traceId,pmsDto.getCurrentVersion());
+                    sendSuccessResponse(ctx,traceId,pmsDto.getCurrentVersion());
                     break;
 
                 //处理消费者订阅消息并告知消费者消息已收到

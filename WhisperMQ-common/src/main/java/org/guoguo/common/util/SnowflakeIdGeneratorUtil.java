@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 public class SnowflakeIdGeneratorUtil {
     // 静态内部类持有单例实例
     private static class SingletonHolder {
-        private static SnowflakeIdGeneratorUtil INSTANCE;
+        private static volatile SnowflakeIdGeneratorUtil INSTANCE;
 
         // 初始化方法，由Spring调用
         private static void initInstance(long workerId, long dataCenterId) {
@@ -39,7 +39,7 @@ public class SnowflakeIdGeneratorUtil {
 
     private final long workerId;
     private final long dataCenterId;
-    private long sequence = 0L;
+    private volatile long sequence = 0L;
     private long lastTimestamp = -1L;
 
     // 私有构造函数，防止外部实例化
@@ -70,8 +70,12 @@ public class SnowflakeIdGeneratorUtil {
     // 静态方法获取单例实例
     public static SnowflakeIdGeneratorUtil getInstance() {
         if (SingletonHolder.INSTANCE == null) {
-            // 如果Spring还未初始化，使用默认值
-            SingletonHolder.INSTANCE = new SnowflakeIdGeneratorUtil();
+            synchronized (SnowflakeIdGeneratorUtil.class) {
+                if (SingletonHolder.INSTANCE == null) {
+                    // 如果Spring还未初始化，使用默认值
+                    SingletonHolder.INSTANCE = new SnowflakeIdGeneratorUtil();
+                }
+            }
         }
         return SingletonHolder.INSTANCE;
     }
