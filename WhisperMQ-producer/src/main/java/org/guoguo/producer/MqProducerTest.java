@@ -36,7 +36,7 @@ public class MqProducerTest {
 
         Thread thread1 = new Thread(() -> {
             try {
-                for (int i = 0; i < 500; i++) {
+                for (int i = 0; i < 100; i++) {
                     MqMessageEnduring msg1 = new MqMessageEnduring();
                     msg1.setTopic("TEST_TOPIC");
                     msg1.setTags(Arrays.asList("TAG1"));
@@ -57,7 +57,7 @@ public class MqProducerTest {
 
         Thread thread2 = new Thread(() -> {
             try {
-                for (int i = 0; i < 500; i++){
+                for (int i = 0; i < 100; i++){
                     MqMessageEnduring msg2 = new MqMessageEnduring();
                     msg2.setTopic("TEST_TOPIC");
                     msg2.setTags(Arrays.asList("TAG1"));
@@ -77,7 +77,7 @@ public class MqProducerTest {
 
         Thread thread3 = new Thread(() -> {
             try {
-                for (int i = 0; i < 500; i++) {
+                for (int i = 0; i <=100; i++) {
                     MqMessageEnduring msg3 = new MqMessageEnduring();
                     msg3.setTopic("TEST_TOPIC");
                     msg3.setTags(Arrays.asList("TAG1"));

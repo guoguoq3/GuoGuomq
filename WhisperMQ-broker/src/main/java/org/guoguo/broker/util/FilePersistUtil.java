@@ -100,6 +100,7 @@ public class FilePersistUtil {
     public synchronized void writeMessage(String messageId, MqMessage message) {
        try {
            //监测当前文件是否超过最大大小 否则创建新的文件 （在broker启动时恢复的）
+           log.info("设置文件大小为：{},实际大小为：{}",mqConfigProperties.getMaxFileSize(),currentPersistFile.length());
            if(currentPersistFile.length()>=mqConfigProperties.getMaxFileSize()){
                 log.info("WhisperMQ==============> 当前文件已超过最大大小，创建新的文件");
                 //关闭流

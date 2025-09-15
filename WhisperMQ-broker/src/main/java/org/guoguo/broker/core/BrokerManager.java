@@ -161,7 +161,7 @@ public class BrokerManager {
         //构建发送给消费者的消息
         PushMessageDTO pushMsg = new PushMessageDTO();
         pushMsg.setMessageId(messageId);
-        pushMsg.setJson(String.valueOf(message));
+        pushMsg.setJson(JSON.toJSONString(message));
         pushMsg.setConsumerGroup(consumerGroup);
 
         //包装为RPC消息
@@ -217,7 +217,7 @@ public class BrokerManager {
             if (targetChannel.isActive()) {
                 PushMessageDTO pushDto = new PushMessageDTO();
                 pushDto.setMessageId(messageId);
-                pushDto.setJson(String.valueOf(message));
+                pushDto.setJson(JSON.toJSONString(message));
                 RpcMessageDTO rpcDto = new RpcMessageDTO();
                 rpcDto.setRequest(false);
                 rpcDto.setMethodType(MethodType.B_PUSH_MSG);
