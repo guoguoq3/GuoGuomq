@@ -27,7 +27,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class OffsetPersistUtil {
     private final MqConfigProperties mqConfigProperties;
-    private final ConsumerGroupManager consumerGroupManager;
 
     //当前正在写入的持久化文件
     private File currentPersistFile;
@@ -38,9 +37,9 @@ public class OffsetPersistUtil {
     private final Map<String, String> persistedUniqueKeyCache = new ConcurrentHashMap<>();
 
     @Autowired
-    public OffsetPersistUtil(MqConfigProperties mqConfigProperties, ConsumerGroupManager consumerGroupManager) {
+    public OffsetPersistUtil(MqConfigProperties mqConfigProperties) {
         this.mqConfigProperties = mqConfigProperties;
-        this.consumerGroupManager = consumerGroupManager;
+
     }
 
 
@@ -89,7 +88,7 @@ public class OffsetPersistUtil {
     public synchronized void writeMessage(String groupId, String topic, String messageId) {
         try {
             // 唯一键：groupId:topic（同一组同一主题只存最新位点）
-            String uniqueKey = groupId + "|" + topic;
+            String uniqueKey = groupId + ":" + topic;
 
             //  检查文件大小：超过最大限制则滚动文件
             if (currentPersistFile.length() >= mqConfigProperties.getMaxFileSize()) {
@@ -262,11 +261,13 @@ public class OffsetPersistUtil {
     /**
      * 回溯所有组的所有位点 存在意义在于集群宕机我直接不用传入直接恢复 集群恢复
      */
-    public void recoverAllOffset() {
+    public Map<String, Map<String, String>> recoverAllOffset() {
+        Map<String, Map<String, String>> result = new HashMap<>();
+
         File persistDir = new File(mqConfigProperties.getOffsetPersistPath());
         if (!persistDir.exists()) {
             log.info("WhisperMQ==============> 位点目录不存在，无需恢复全量位点");
-            return;
+            return result;
         }
 
         // 1. 获取所有位点文件（按修改时间升序）
@@ -275,11 +276,11 @@ public class OffsetPersistUtil {
         );
         if (files == null || files.length == 0) {
             log.info("WhisperMQ==============> 无位点文件，无需恢复全量位点");
-            return;
+            return result;
         }
         Arrays.sort(files, Comparator.comparingLong(File::lastModified));
 
-        // 临时存储：key=唯一键（groupId:topic），value=最新位点（确保后读的覆盖前读的）
+        // 临时存储：key=唯一键（groupId|topic），value=最新位点（确保后读的覆盖前读的）
         Map<String, String> allLatestOffsetMap = new HashMap<>();
 
         // 2. 遍历所有文件，收集所有唯一键的最新位点
@@ -293,15 +294,20 @@ public class OffsetPersistUtil {
                     line = line.trim();
                     if (line.isEmpty()) continue;
 
-                    String[] parts = line.split("\\|", 2);
-                    if (parts.length != 2) {
+                    // 按"|"分割groupId、topic和offset
+                    String[] parts = line.split("\\|", 3);
+                    if (parts.length != 3) {
                         log.warn("WhisperMQ==============> 全量恢复：无效行（文件：{}，行：{}）",
                                 file.getName(), line);
                         continue;
                     }
 
-                    String uniqueKey = parts[0];
-                    String offset = parts[1];
+                    String groupId = parts[0];
+                    String topic = parts[1];
+                    String offset = parts[2];
+
+                    // 构造唯一键
+                    String uniqueKey = groupId + "|" + topic;
                     // 覆盖更新：后读的文件位点优先级更高
                     allLatestOffsetMap.put(uniqueKey, offset);
                 }
@@ -310,14 +316,13 @@ public class OffsetPersistUtil {
             }
         }
 
-        // 3. 将收集的最新位点更新到对应消费者组
-        int recoverCount = 0;
+        // 3. 将收集的最新位点整理成结果格式
         for (Map.Entry<String, String> entry : allLatestOffsetMap.entrySet()) {
             String uniqueKey = entry.getKey();
             String offset = entry.getValue();
 
-            // 解析唯一键：groupId:topic
-            String[] keyParts = uniqueKey.split(":", 2);
+            // 解析唯一键：groupId|topic
+            String[] keyParts = uniqueKey.split("\\|", 2);
             if (keyParts.length != 2) {
                 log.warn("WhisperMQ==============> 全量恢复：无效唯一键（{}）", uniqueKey);
                 continue;
@@ -325,19 +330,18 @@ public class OffsetPersistUtil {
             String groupId = keyParts[0];
             String topic = keyParts[1];
 
-            // 获取消费者组（不存在则创建）
-            ConsumerGroup group = consumerGroupManager.getOrCreateConsumerGroup(groupId);
-            // 更新位点到组内存
-            group.getTopicOffsetMap().put(topic, offset);
+            // 整理成嵌套Map结构
+            result.computeIfAbsent(groupId, k -> new HashMap<>()).put(topic, offset);
+
             // 更新内存缓存
             persistedUniqueKeyCache.put(uniqueKey, offset);
 
-            recoverCount++;
             log.debug("WhisperMQ==============> 全量恢复位点（组：{}，主题：{}，位点：{}）",
                     groupId, topic, offset);
         }
 
-        log.info("WhisperMQ==============> 全量位点恢复完成，共恢复{}个唯一键的位点", recoverCount);
+        log.info("WhisperMQ==============> 全量位点恢复完成，共恢复{}个唯一键的位点", result.size());
+        return result;
     }
 
     /**

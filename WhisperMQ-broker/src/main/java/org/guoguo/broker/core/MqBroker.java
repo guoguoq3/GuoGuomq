@@ -12,13 +12,18 @@ import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.guoguo.broker.ConsumerGroup.ConsumerGroupManager;
 import org.guoguo.broker.handler.MqBrokerHandler;
 import org.guoguo.broker.util.FilePersistUtil;
 import org.guoguo.common.config.MqConfigProperties;
+import org.guoguo.common.pojo.Entity.MqMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component // 交给 Spring 管理
@@ -28,15 +33,17 @@ public class MqBroker {
     private EventLoopGroup workerGroup;
     private FilePersistUtil filePersistUtil;
 
+
+
    private final MqBrokerHandler mqBrokerHandler;
 
 
     // 构造器注入配置
     @Autowired
-    public MqBroker(MqConfigProperties config, MqBrokerHandler mqBrokerHandler, FilePersistUtil filePersistUtil) {
+    public MqBroker(MqConfigProperties config, MqBrokerHandler mqBrokerHandler,FilePersistUtil filePersistUtil,BrokerManager brokerManager) {
         this.config = config;
         this.mqBrokerHandler=mqBrokerHandler;
-        this.filePersistUtil = filePersistUtil;
+
     }
 
     // 启动时自动执行（初始化 Netty 服务）

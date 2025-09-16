@@ -10,11 +10,13 @@ import org.guoguo.common.pojo.DTO.SubscribeReqDTO;
 import org.guoguo.common.pojo.Entity.ConsumerGroup;
 import org.guoguo.common.pojo.Entity.MqMessage;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -33,12 +35,39 @@ public class ConsumerGroupManager {
         return Collections.unmodifiableMap(groupMap);
     }
     @Autowired
-    public ConsumerGroupManager(OffsetPersistUtil offsetPersistUtil, BrokerManager brokerManager) {
+    public ConsumerGroupManager(OffsetPersistUtil offsetPersistUtil,  BrokerManager brokerManager) {
         this.offsetPersistUtil = offsetPersistUtil;
         this.brokerManager = brokerManager;
     }
 
     // return new HashMap<>(groupMap); 深拷贝方法
+
+    /**
+     * 恢复所有消费者组的位点信息
+     */
+    private void recoverAllOffset() {
+        try {
+            Map<String, Map<String, String>> allOffsetData = offsetPersistUtil.recoverAllOffset();
+            for (Map.Entry<String, Map<String, String>> groupEntry : allOffsetData.entrySet()) {
+                String groupId = groupEntry.getKey();
+                Map<String, String> topicOffsetMap = groupEntry.getValue();
+
+                // 获取或创建消费者组
+                ConsumerGroup group = getOrCreateConsumerGroup(groupId);
+
+                // 恢复该组的所有topic offset
+                for (Map.Entry<String, String> topicEntry : topicOffsetMap.entrySet()) {
+                    String topic = topicEntry.getKey();
+                    String offset = topicEntry.getValue();
+                    group.getTopicOffsetMap().put(topic, offset);
+                    log.debug("WhisperMQ==============> 恢复组位点（组：{}，主题：{}，位点：{}）", groupId, topic, offset);
+                }
+            }
+            log.info("WhisperMQ==============> 成功恢复所有消费者组位点，共涉及{}个消费者组", allOffsetData.size());
+        } catch (Exception e) {
+            log.error("WhisperMQ==============> 恢复所有消费者组位点失败", e);
+        }
+    }
 
     //获取创建消费者组 没有就创建
     public ConsumerGroup getOrCreateConsumerGroup(String groupId) {
@@ -224,7 +253,10 @@ public class ConsumerGroupManager {
         String currentOffset = consumerGroup.getTopicOffsetMap().get(topic);
         if (currentOffset == null || Long.parseLong(messageId) > Long.parseLong(currentOffset)) {
             consumerGroup.getTopicOffsetMap().put(topic, messageId);
-            offsetPersistUtil.writeMessage(groupId, topic, messageId);
+            // 异步持久化
+            CompletableFuture.runAsync(() ->
+                    offsetPersistUtil.writeMessage(groupId, topic, messageId)
+            );
             log.info("WhisperMQ Broker 更新组{}的主题{}消费位点至消息{}",
                     groupId, topic, messageId);
         }

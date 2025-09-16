@@ -65,7 +65,7 @@ public class MultiConsumerTest {
         SubscribeReqDTO req2 = new SubscribeReqDTO();
         req2.setTopic("TEST_TOPIC");
         req2.setTags(Arrays.asList("TAG1"));
-        req1.setGroupId("ORDER_GROUP");
+        req2.setGroupId("ORDER_GROUP");
         consumer2.groupSubscribe(req2, new IMessageListener() {
             @Override
             public boolean onMessage(MqMessage message) {

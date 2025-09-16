@@ -8,6 +8,7 @@ import org.guoguo.common.config.MqConfigProperties;
 import org.guoguo.common.pojo.Entity.MqMessage;
 import org.guoguo.common.pojo.Entity.MqMessageEnduring;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.io.*;

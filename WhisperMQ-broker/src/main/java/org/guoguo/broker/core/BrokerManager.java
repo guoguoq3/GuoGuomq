@@ -41,7 +41,7 @@ public class BrokerManager {
 
     private final FilePersistUtil filePersistUtil;
     @Autowired
-    public BrokerManager(@Lazy  FilePersistUtil filePersistUtil,ConsumerGroupManager consumerGroupManager) {
+    public BrokerManager(@Lazy FilePersistUtil filePersistUtil,@Lazy ConsumerGroupManager consumerGroupManager) {
         this.filePersistUtil = filePersistUtil;
         this.groupManager = consumerGroupManager;
     }
