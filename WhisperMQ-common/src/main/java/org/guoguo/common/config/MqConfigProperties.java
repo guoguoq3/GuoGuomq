@@ -24,6 +24,8 @@ public class MqConfigProperties {
     private int producerRetryCountLimit ;
     /** 消费者重试时间系数（默认：500） */
     private int producerRetryTimeCoefficient ;
+    /** 位点刷盘时间（默认：5秒） */
+    private long flushIntervalMillis;
 
     //新增持久化配置
     /** 消息持久化文件路径（默认：项目根目录下的 WhisperMQ-data 文件夹） */

@@ -122,8 +122,9 @@ public class ConsumerGroupManager {
             return;
         }
 
-        //回溯一波位点
+        //回溯一波位点 todo： 这块只有持久化文件中的位点 第二种就好全量恢复
         offsetPersistUtil.init(consumerGroup, topic);
+
         String lastOffset = consumerGroup.getTopicOffsetMap().get(topic);
         if (lastOffset == null){
            log.info("WhisperMQ Broker 组{}订阅主题{}：无历史位点，位点为最新的消息", groupId, topic);
@@ -180,11 +181,13 @@ public class ConsumerGroupManager {
             return;
         }
         ConsumerGroup group = groupMap.get(groupId);
+
         if (group == null) {
             log.warn("WhisperMQ Broker 消费者组{}不存在，取消订阅失败", groupId);
             return;
         }
         group.removeSubscribe(topic);
+        offsetPersistUtil.closeGroup(groupId);
         log.info("WhisperMQ Broker 消费者组{}取消订阅主题{}", groupId, topic);
     }
 

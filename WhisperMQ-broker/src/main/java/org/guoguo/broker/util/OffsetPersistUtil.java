@@ -19,6 +19,11 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /*
 消费者组持久化时将 在持久化文件中的消费者会有唯一性
@@ -28,17 +33,41 @@ import java.util.concurrent.ConcurrentHashMap;
 public class OffsetPersistUtil {
     private final MqConfigProperties mqConfigProperties;
 
-    //当前正在写入的持久化文件
-    private File currentPersistFile;
-    //文件写入流
-    private BufferedWriter writer;
 
-    // 内存缓存：记录已持久化的唯一键（groupId:topic），避免重复写入（可选优化，减少文件IO）
+
+    // 内存缓存：记录已持久化的唯一键（groupId:topic），避免重复写入（可选优化，减少文件IO） 目前需确保log日志其中键唯一 每次来新消息 就先缓存替换 每一段时间替换文件
     private final Map<String, String> persistedUniqueKeyCache = new ConcurrentHashMap<>();
+
+    //用正则匹配Pattern是线程安全的，通过static final预编译后，可在多线程中共享，避免重复编译带来的性能损耗
+    //每秒 10 万 + 条日志
+    // 预编译正则：解析 "groupId:topic|offset" 格式
+    private static final Pattern OFFSET_PATTERN = Pattern.compile("^(?<uniqueKey>[^|]+)\\|(?<offset>\\d+)$");
+
+    // 每个消费者组的写入流（key=groupId）
+    private final Map<String, BufferedWriter> groupWriterMap = new ConcurrentHashMap<>();
+    // 每个消费者组的文件映射（避免重复创建流）
+    private final Map<String, File> groupFileMap = new ConcurrentHashMap<>();
+
 
     @Autowired
     public OffsetPersistUtil(MqConfigProperties mqConfigProperties) {
         this.mqConfigProperties = mqConfigProperties;
+        // 启动定时任务，定期执行flush
+        //定时刷新消息到文件中 不然一条一刷会大量io操作
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                for (Map.Entry<String, BufferedWriter> entry : groupWriterMap.entrySet()) {
+                    String groupId = entry.getKey();
+                    BufferedWriter writer = entry.getValue();
+                    writer.flush();
+                    log.info("消费者组[{}]flush完成", groupId);
+                }
+                log.info("定时批量flush完成");
+            } catch (Exception e) {
+                log.error("定时批量flush失败", e);
+            }
+        }, mqConfigProperties.getFlushIntervalMillis(), mqConfigProperties.getFlushIntervalMillis(), TimeUnit.MILLISECONDS);
 
     }
 
@@ -47,134 +76,102 @@ public class OffsetPersistUtil {
      * 不是启动时执行 而是一个消费者组订阅时调用这个方法 获取是否存在位点 如果有就直接恢复到其消费者组文件中
      */
 
-    public void init(ConsumerGroup consumerGroup,String topic) {
+    /**
+     * 消费者组订阅时初始化：为该组创建专属文件并恢复位点
+     */
+    public void init(ConsumerGroup consumerGroup, String topic) {
+        String groupId = consumerGroup.getGroupId();
         try {
-            //若是持久化目录不存在就创建一个
+            // 1. 创建根目录
             File persistDir = new File(mqConfigProperties.getOffsetPersistPath());
-            if (!persistDir.exists()) {
-                boolean mkdirSuccess = persistDir.mkdirs();
-                if (mkdirSuccess) {
-                    log.info("WhisperMQ==============> 创建消费者位点持久化目录成功 ：{}", persistDir.getAbsolutePath());
-                } else {
-                    log.info("WhisperMQ==============> 创建费者位点持久化持久化目录失败{}", persistDir.getAbsolutePath());
-                    throw new RuntimeException("持久化目录创建失败，Broker 启动异常");
-                }
-            }
-            //查找最新的持久化文件 如是有历史文件 优先用最新的 没有就创建文件
-            currentPersistFile = findLatestPersistFile(persistDir);
-            if (currentPersistFile == null) {
-                currentPersistFile = createNewPersistFile(persistDir);
+            if (!persistDir.exists() && !persistDir.mkdirs()) {
+                throw new RuntimeException("创建位点目录失败：" + persistDir.getAbsolutePath());
             }
 
-            writer = Files.newBufferedWriter(currentPersistFile.toPath(), StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+            // 2. 为消费者组创建专属文件（如 group1-offset.log）
+            File groupFile = getOrCreateGroupFile(persistDir, groupId);
+            groupFileMap.put(groupId, groupFile);
 
-            // 从历史文件中恢复消息到内存
+            // 3. 初始化该组的写入流
+            BufferedWriter writer = Files.newBufferedWriter(
+                    groupFile.toPath(),
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.APPEND,
+                    StandardOpenOption.CREATE
+            );
+            groupWriterMap.put(groupId, writer);
 
+            // 4. 仅恢复当前组+主题的位点（无需遍历其他组文件）
             recoverOffsetByGroupAndTopic(consumerGroup, topic);
 
         } catch (Exception e) {
-            log.error("WhisperMQ异常，初始化消费者位点持久化目录失败======================>", e);
-            throw new RuntimeException("初始化消费者位点持久化目录失败，Broker 启动异常");
-
+            log.error("初始化消费者组[{}]位点失败", groupId, e);
+            throw new RuntimeException("位点初始化失败", e);
         }
     }
 
+
     /**
-     * 写入位点：按“groupId:topic”唯一键存储，避免重复
-     * @param groupId 消费者组ID
-     * @param topic 主题
-     * @param messageId 最新消费的消息ID（位点）
+     * 获取或创建消费者组的专属文件（如 group1-offset.log）
      */
-    public synchronized void writeMessage(String groupId, String topic, String messageId) {
-        try {
-            // 唯一键：groupId:topic（同一组同一主题只存最新位点）
-            String uniqueKey = groupId + ":" + topic;
+    private File getOrCreateGroupFile(File persistDir, String groupId) throws IOException {
+        String fileName = groupId + "-offset.log";
+        File groupFile = new File(persistDir, fileName);
 
-            //  检查文件大小：超过最大限制则滚动文件
-            if (currentPersistFile.length() >= mqConfigProperties.getMaxFileSize()) {
-                log.info("WhisperMQ==============> 当前位点文件超过最大大小（{}），创建新文件",
-                        mqConfigProperties.getMaxFileSize());
-                // 关闭旧流
-                writer.close();
-                // 新建文件
-                currentPersistFile = createNewPersistFile(new File(mqConfigProperties.getOffsetPersistPath()));
-                // 初始化新流
-                writer = Files.newBufferedWriter(
-                        currentPersistFile.toPath(),
-                        StandardCharsets.UTF_8,
-                        StandardOpenOption.APPEND,
-                        StandardOpenOption.CREATE
-                );
-                // 清空内存缓存（新文件重新记录）todo：消息位点久远是否还回溯
-                persistedUniqueKeyCache.clear();
+        if (!groupFile.exists()) {
+            boolean created = groupFile.createNewFile();
+
+            if (created) {
+                log.info("组[{}]创建新位点文件：{}", groupId, groupFile.getAbsolutePath());
+            } else {
+                throw new IOException("组[" + groupId + "]文件创建失败");
             }
+        }
+        return groupFile;
+    }
 
-            //避免重复写入 保证唯一性
-            if(persistedUniqueKeyCache.containsKey(uniqueKey)&&persistedUniqueKeyCache.get(uniqueKey).equals(messageId)){
-                log.debug("WhisperMQ==============> 位点无更新，跳过写入（唯一键：{}，位点：{}）",
-                        uniqueKey, messageId);
+
+    /**
+     * 写入位点：仅操作当前消费者组的专属文件
+     */
+    public void writeMessage(String groupId, String topic, String messageId) {
+        if (!groupWriterMap.containsKey(groupId)) {
+            log.error("消费者组[{}]未初始化，无法写入位点", groupId);
+            return;
+        }
+
+        String uniqueKey = groupId + ":" + topic;
+        try {
+            // 1. 缓存判断：避免重复写入
+            String cachedOffset = persistedUniqueKeyCache.get(uniqueKey);
+            if (messageId.equals(cachedOffset)) {
+                log.debug("位点无更新，跳过写入（{}）", uniqueKey);
                 return;
             }
 
-
-            // ORDER_GROUP:ORDER_TOPIC|1699999999999
-            String messageStr= uniqueKey + "|" + messageId;
-            //写入文件
-            writer.write(messageStr);
-            //换行 方便后续按行读取
-            writer.newLine();
-            //强制刷新 立即写入
-            writer.flush();
-            // 更新内存缓存（记录最新唯一键和位点）
-            persistedUniqueKeyCache.put(uniqueKey, messageId);
-
-            log.info("WhisperMQ 消息持久化成功：文件={}，消息ID={}", currentPersistFile.getName(), groupId);
-
-        }catch (Exception e){
-            log.error("WhisperMQ 消息持久化失败，消息ID={}", groupId, e);
-            //todo：失败重试的机制
-
-        }
-    }
-
-    /**
-     * 查找最新的位点文件（按修改时间降序）
-     */
-    private File findLatestPersistFile(File persistDir) {
-        File[] files = persistDir.listFiles((dir, name) ->
-                name.startsWith("WhisperMQ-offset-persist-") && name.endsWith(".log")
-        );
-        if (files == null || files.length == 0) {
-            return null;
-        }
-
-        // 按修改时间降序，取第一个（最新）
-        return Arrays.stream(files)
-                .max(Comparator.comparingLong(File::lastModified))
-                .orElse(null);
-    }
-
-    /**
-     * 创建新的持久化文件
-     */
-    private File createNewPersistFile(File persistDir) {
-        String fileName = "WhisperMQ-offset-persist-" + System.currentTimeMillis() + ".log";
-        File newFile = new File(persistDir, fileName);
-        try {
-            boolean createSuccess = newFile.createNewFile();
-            if (createSuccess) {
-                log.info("WhisperMQ==============> 新消费者位点持久化文件创建成功：{}", newFile.getAbsolutePath());
-                return newFile;
-            } else {
-                log.info("WhisperMQ==============> 新消费者位点持久化文件创建失败：{}", newFile.getAbsolutePath());
-                throw new IOException("新消费者位点持久化文件创建失败");
+            // 2. 检查文件大小，超过限制则滚动（仅当前组文件）
+            File groupFile = groupFileMap.get(groupId);
+            if (groupFile.length() >= mqConfigProperties.getMaxFileSize()) {
+                log.info("组[{}]文件超过最大大小，创建新文件", groupId);
+                rotateGroupFile(groupId, groupFile);
             }
-        } catch (Exception e) {
-            log.error("WhisperMQ 新消费者位点持久化文件创建失败", e);
-            throw new RuntimeException("新消费者位点持久化文件创建失败", e);
-        }
 
+            // 3. 写入当前组的文件
+            BufferedWriter writer = groupWriterMap.get(groupId);
+            String line = uniqueKey + "|" + messageId + "\n";
+            writer.write(line);
+
+
+            // 4. 更新缓存
+            persistedUniqueKeyCache.put(uniqueKey, messageId);
+            log.debug("组[{}]位点写入成功：{}", groupId, line.trim());
+
+        } catch (Exception e) {
+            log.error("组[{}]位点写入失败（{}）", groupId, uniqueKey, e);
+        }
     }
+
+
     /**
      * 从所有历史文件中恢复位点到内存
      * 注意在这些消息的恢复过程中都是单线程的 不会涉及到多并发这时系统还未开始正常处理外部请求，不需要并发处理
@@ -184,177 +181,165 @@ public class OffsetPersistUtil {
 
         String groupId = consumerGroup.getGroupId();
         String targetUniqueKey = groupId + ":" + topic;
+        File groupFile = groupFileMap.get(groupId);
 
 
-        File persistDir = new File(mqConfigProperties.getOffsetPersistPath());
-        if (!persistDir.exists()) {
-            log.info("WhisperMQ 消费位点目录不存在，无需恢复");
+        if (groupFile == null || !groupFile.exists()) {
+            log.info("组[{}]无位点文件，无需恢复", groupId);
             return;
         }
 
-        // 1. 获取所有位点文件（按修改时间升序，确保先恢复旧文件）
-        File[] files = persistDir.listFiles((dir, name) ->
-                name.startsWith("WhisperMQ-offset-persist-") && name.endsWith(".log")
-        );
-        if (files == null || files.length == 0) {
-            log.info("WhisperMQ 无消费位点文件，无需恢复");
-            return ;
-        }
-
-        // 按修改时间升序排列（先处理旧文件，后处理新文件，确保位点覆盖正确）
-        Arrays.sort(files, Comparator.comparingLong(File::lastModified));
-
-
-        //最新位点
         String latestOffset = null;
+        //仅遍历当前组的位点文件
+        try (BufferedReader reader = Files.newBufferedReader(groupFile.toPath())){
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
 
-        // 遍历所有文件，查找目标唯一键的最新位点
-        for (File file : files) {
-            try (BufferedReader reader = Files.newBufferedReader(
-                    file.toPath(),
-                    StandardCharsets.UTF_8
-            )) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    line = line.trim();
-                    if (line.isEmpty()) continue;
-
-                    // 4. 按“|”分割唯一键和位点（与写入格式一致）
-                    String[] parts = line.split("\\|", 2);
-                    if (parts.length != 2) {
-                        log.warn("WhisperMQ==============> 位点文件解析异常，无效行（文件：{}，行：{}）",
-                                file.getName(), line);
-                        continue;
-                    }
-
-                    String fileUniqueKey = parts[0];
-                    String fileOffset = parts[1];
-
-                    // 5. 匹配目标唯一键：更新最新位点（后读的文件位点覆盖前读的）
-                    if (targetUniqueKey.equals(fileUniqueKey)) {
-                        latestOffset = fileOffset;
-                        log.debug("WhisperMQ==============> 从文件{}中读取到位点（唯一键：{}，位点：{}）",
-                                file.getName(), fileUniqueKey, fileOffset);
-                    }
+                Matcher matcher = OFFSET_PATTERN.matcher(line);
+                if (matcher.matches() && matcher.group("uniqueKey").equals(targetUniqueKey)) {
+                    latestOffset = matcher.group("offset"); // 后出现的行覆盖旧值
                 }
-            } catch (Exception e) {
-                log.error("WhisperMQ==============> 读取位点文件{}失败", file.getName(), e);
-                // 单个文件失败不影响整体，继续处理下一个文件
             }
+        } catch (Exception e) {
+            log.error("读取组[{}]文件失败", groupId, e);
+            throw new RuntimeException(e);
         }
 
-        // 6. 若找到最新位点，更新到消费者组内存
         if (latestOffset != null) {
             consumerGroup.getTopicOffsetMap().put(topic, latestOffset);
-            // 更新内存缓存（避免后续重复写入）
+            //总的放一下
             persistedUniqueKeyCache.put(targetUniqueKey, latestOffset);
-            log.info("WhisperMQ==============> 成功恢复位点（组：{}，主题：{}，位点：{}）",
-                    groupId, topic, latestOffset);
-        } else {
-            log.info("WhisperMQ==============> 未找到目标位点（组：{}，主题：{}）",
-                    groupId, topic);
+            log.info("组[{}]恢复位点成功（{}:{}）", groupId, topic, latestOffset);
         }
+
+
+
     }
 
 
 
     /**
-     * 回溯所有组的所有位点 存在意义在于集群宕机我直接不用传入直接恢复 集群恢复
+     * 全量恢复：按组遍历所有文件（每个组单独处理）
      */
     public Map<String, Map<String, String>> recoverAllOffset() {
         Map<String, Map<String, String>> result = new HashMap<>();
-
         File persistDir = new File(mqConfigProperties.getOffsetPersistPath());
+
         if (!persistDir.exists()) {
-            log.info("WhisperMQ==============> 位点目录不存在，无需恢复全量位点");
+            log.info("位点目录不存在，全量恢复为空");
             return result;
         }
 
-        // 1. 获取所有位点文件（按修改时间升序）
-        File[] files = persistDir.listFiles((dir, name) ->
-                name.startsWith("WhisperMQ-offset-persist-") && name.endsWith(".log")
+        // 遍历所有组的文件（文件名格式：group1-offset.log）
+        File[] groupFiles = persistDir.listFiles((dir, name) ->
+                name.endsWith("-offset.log")
         );
-        if (files == null || files.length == 0) {
-            log.info("WhisperMQ==============> 无位点文件，无需恢复全量位点");
+
+        if (groupFiles == null || groupFiles.length == 0) {
+            log.info("无位点文件，全量恢复为空");
             return result;
         }
-        Arrays.sort(files, Comparator.comparingLong(File::lastModified));
 
-        // 临时存储：key=唯一键（groupId|topic），value=最新位点（确保后读的覆盖前读的）
-        Map<String, String> allLatestOffsetMap = new HashMap<>();
+        for (File file : groupFiles) {
+            // 从文件名提取groupId（如 "group1-offset.log" → "group1"）
+            String fileName = file.getName();
+            String groupId = fileName.replace("-offset.log", "");
 
-        // 2. 遍历所有文件，收集所有唯一键的最新位点
-        for (File file : files) {
-            try (BufferedReader reader = Files.newBufferedReader(
-                    file.toPath(),
-                    StandardCharsets.UTF_8
-            )) {
+            Map<String, String> topicOffsets = new HashMap<>();
+            try (BufferedReader reader = Files.newBufferedReader(file.toPath())) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     line = line.trim();
                     if (line.isEmpty()) continue;
 
-                    // 按"|"分割groupId、topic和offset
-                    String[] parts = line.split("\\|", 3);
-                    if (parts.length != 3) {
-                        log.warn("WhisperMQ==============> 全量恢复：无效行（文件：{}，行：{}）",
-                                file.getName(), line);
-                        continue;
+                    Matcher matcher = OFFSET_PATTERN.matcher(line);
+                    if (matcher.matches()) {
+                        String uniqueKey = matcher.group("uniqueKey");
+                        String offset = matcher.group("offset");
+                        // 解析出topic（uniqueKey格式：groupId:topic）
+                        String[] keyParts = uniqueKey.split(":", 2);
+                        if (keyParts.length == 2) {
+                            topicOffsets.put(keyParts[1], offset);
+                            persistedUniqueKeyCache.put(uniqueKey, offset); // 更新缓存
+                        }
                     }
-
-                    String groupId = parts[0];
-                    String topic = parts[1];
-                    String offset = parts[2];
-
-                    // 构造唯一键
-                    String uniqueKey = groupId + "|" + topic;
-                    // 覆盖更新：后读的文件位点优先级更高
-                    allLatestOffsetMap.put(uniqueKey, offset);
                 }
             } catch (Exception e) {
-                log.error("WhisperMQ==============> 全量恢复：读取文件{}失败", file.getName(), e);
+                log.error("全量恢复：读取组[{}]文件失败", groupId, e);
+            }
+
+            if (!topicOffsets.isEmpty()) {
+                result.put(groupId, topicOffsets);
             }
         }
 
-        // 3. 将收集的最新位点整理成结果格式
-        for (Map.Entry<String, String> entry : allLatestOffsetMap.entrySet()) {
-            String uniqueKey = entry.getKey();
-            String offset = entry.getValue();
-
-            // 解析唯一键：groupId|topic
-            String[] keyParts = uniqueKey.split("\\|", 2);
-            if (keyParts.length != 2) {
-                log.warn("WhisperMQ==============> 全量恢复：无效唯一键（{}）", uniqueKey);
-                continue;
-            }
-            String groupId = keyParts[0];
-            String topic = keyParts[1];
-
-            // 整理成嵌套Map结构
-            result.computeIfAbsent(groupId, k -> new HashMap<>()).put(topic, offset);
-
-            // 更新内存缓存
-            persistedUniqueKeyCache.put(uniqueKey, offset);
-
-            log.debug("WhisperMQ==============> 全量恢复位点（组：{}，主题：{}，位点：{}）",
-                    groupId, topic, offset);
-        }
-
-        log.info("WhisperMQ==============> 全量位点恢复完成，共恢复{}个唯一键的位点", result.size());
+        log.info("全量恢复完成，共恢复{}个消费者组的位点", result.size());
         return result;
     }
 
     /**
-     * 关闭资源（Broker关闭时调用）
+     * 滚动消费者组的文件（如 group1-offset.log → group1-offset-1699999999.log）
      */
-    public synchronized void close() {
-        if (writer != null) {
+    private void rotateGroupFile(String groupId, File oldFile) throws IOException {
+        // 1. 关闭旧流
+        BufferedWriter oldWriter = groupWriterMap.get(groupId);
+        oldWriter.close();
+
+        // 2. 重命名旧文件（加时间戳后缀）
+        String oldFileName = oldFile.getName();
+        String newOldFileName = oldFileName.replace(".log", "-" + System.currentTimeMillis() + ".log");
+        File newOldFile = new File(oldFile.getParent(), newOldFileName);
+        if (!oldFile.renameTo(newOldFile)) {
+            log.warn("组[{}]文件重命名失败，直接创建新文件", groupId);
+        }
+
+        // 3. 创建新文件并初始化流
+        File persistDir = new File(mqConfigProperties.getOffsetPersistPath());
+        File newFile = getOrCreateGroupFile(persistDir, groupId);
+        BufferedWriter newWriter = Files.newBufferedWriter(
+                newFile.toPath(),
+                StandardCharsets.UTF_8,
+                StandardOpenOption.APPEND,
+                StandardOpenOption.CREATE
+        );
+
+        // 4. 更新映射关系
+        groupFileMap.put(groupId, newFile);
+        groupWriterMap.put(groupId, newWriter);
+        log.info("组[{}]文件滚动完成，新文件：{}", groupId, newFile.getName());
+    }
+
+    /**
+     * 关闭指定组的资源（消费者组销毁时调用）
+     */
+    public void closeGroup(String groupId) {
+        try {
+            BufferedWriter writer = groupWriterMap.remove(groupId);
+            if (writer != null) {
+                writer.close();
+            }
+            groupFileMap.remove(groupId);
+            log.info("组[{}]资源已关闭", groupId);
+        } catch (IOException e) {
+            log.error("组[{}]资源关闭失败", groupId, e);
+        }
+    }
+
+    /**
+     * 关闭所有资源（Broker关闭时调用）
+     */
+    public void close() {
+        groupWriterMap.forEach((groupId, writer) -> {
             try {
                 writer.close();
-                log.info("WhisperMQ==============> 位点写入流关闭成功");
             } catch (IOException e) {
-                log.error("WhisperMQ==============> 位点写入流关闭失败", e);
+                log.error("组[{}]流关闭失败", groupId, e);
             }
-        }
+        });
+        groupWriterMap.clear();
+        groupFileMap.clear();
+        log.info("所有位点资源已关闭");
     }
 }

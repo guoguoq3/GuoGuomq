@@ -17,6 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.guoguo.broker.ConsumerGroup.ConsumerGroupManager;
 import org.guoguo.broker.handler.MqBrokerHandler;
 import org.guoguo.broker.util.FilePersistUtil;
+import org.guoguo.broker.util.OffsetPersistUtil;
 import org.guoguo.common.config.MqConfigProperties;
 import org.guoguo.common.pojo.Entity.MqMessage;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,13 +37,16 @@ public class MqBroker {
 
 
    private final MqBrokerHandler mqBrokerHandler;
+   private final OffsetPersistUtil offsetPersistUtil;
 
 
     // 构造器注入配置
     @Autowired
-    public MqBroker(MqConfigProperties config, MqBrokerHandler mqBrokerHandler,FilePersistUtil filePersistUtil,BrokerManager brokerManager) {
+    public MqBroker(MqConfigProperties config, MqBrokerHandler mqBrokerHandler,FilePersistUtil filePersistUtil,BrokerManager brokerManager, OffsetPersistUtil offsetPersistUtil) {
         this.config = config;
         this.mqBrokerHandler=mqBrokerHandler;
+        this.filePersistUtil=filePersistUtil;
+        this.offsetPersistUtil=offsetPersistUtil;
 
     }
 
@@ -90,6 +94,7 @@ public class MqBroker {
     public void stop() {
         if (bossGroup != null) bossGroup.shutdownGracefully();
         if (workerGroup != null) workerGroup.shutdownGracefully();
+        offsetPersistUtil.close();
         log.info("Broker 已关闭");
     }
 }
